@@ -1,0 +1,169 @@
+================================================================================
+  OUTPUT DATA – LV GRID 2703-23_0_4 (Riehen, Canton Basel-Stadt)
+  Optimal Power Flow (OPF) Optimization Project
+================================================================================
+
+OVERVIEW
+--------
+This folder contains all input data for the OPF optimization of the Swiss
+low-voltage (LV) distribution grid 2703-23_0_4, located in Riehen (BFS
+municipality code 2703, Midlands-Urban). Data is provided for three planning
+horizons (2030, 2040, 2050) and two representative-day configurations.
+
+Grid properties:
+  - 178 nodes (buses), coordinates in CH1903+ / LV95
+  - Scenario years: 2030, 2040, 2050
+  - Technologies: PV, BESS, Heat Pumps (HP), Electric Vehicles (EV), Demand
+
+================================================================================
+FOLDER STRUCTURE
+================================================================================
+
+output_riehen/
+│
+├── README.txt                        ← this file
+│
+├── 2703_23/                          ← FREE CLUSTERING (20 representative days)
+│   │   Method: K-means + medoid over full year, k=20 globally
+│   │   Result: 20 days chosen freely to best represent annual variation
+│   │
+│   ├── 2030/
+│   ├── 2040/
+│   └── 2050/
+│       │
+│       ├── rep_days_summary.csv      ← list of 20 rep. days + weights
+│       ├── nodes.geojson             ← grid nodes (buses) with coordinates
+│       ├── edges.geojson             ← grid lines/cables with impedances
+│       │
+│       ├── load_profiles.csv         ← hourly demand per node [kW], 20×24 cols
+│       ├── pv_generation.csv         ← hourly PV generation per installation [kW]
+│       ├── pv_std.csv                ← PV generation standard deviation [kW]
+│       ├── pv_p_installed.csv        ← installed PV capacity per node [kW]
+│       │
+│       ├── bess_allocation.csv       ← BESS per node: capacity [kWh], power [kW],
+│       │                                charging/discharging efficiency [-]
+│       ├── hp_allocation.csv         ← heat pump allocation per node
+│       ├── temperature_profiles.csv  ← hourly temperature profiles for HP [degC]
+│       │
+│       ├── ev_allocation.csv         ← EV share per node (fraction of municipality
+│       │                                EV fleet), 140 nodes active, sum=0.0247
+│       ├── ev_power_profiles.csv     ← hourly EV charging load for full municipality
+│       │                                [kW], 3 scenarios: Lower / Base / Upper
+│       ├── ev_flexible_energy_profiles.csv  ← daily flexible EV energy budget for
+│       │                                       full municipality [kWh/day]
+│       │
+│       └── ev_alternativ/            ← ALTERNATIVE EV SCENARIO
+│               Assumption: EV adoption spreads spatially over time.
+│               Active nodes: 2030=50, 2040=95, 2050=140 (top nodes by share).
+│               Total grid EV load is conserved (shares rescaled).
+│               Power and flexible energy profiles unchanged (municipality-level).
+│
+│               ├── ev_allocation.csv
+│               ├── ev_power_profiles.csv         (copy, unchanged)
+│               └── ev_flexible_energy_profiles.csv (copy, unchanged)
+│
+│
+└── 2703_23_homogen/                  ← HOMOGENEOUS CLUSTERING (24 representative days)
+    │   Method: K-means k=2 per month (constrained to 2 days/month)
+    │   Result: 24 days, exactly 2 per calendar month → balanced seasonal coverage
+    │   Note: same representative days across all years (profiles differ per year)
+    │
+    ├── 2030/
+    ├── 2040/
+    └── 2050/
+        │   (same file structure as 2703_23/)
+        └── ev_alternativ/  (same EV alternative scenario as above)
+
+
+================================================================================
+FILE FORMATS & UNITS
+================================================================================
+
+rep_days_summary.csv
+  - day:    date label MM-DD
+  - index:  0-based day-of-year index
+  - weight: number of real days this representative day stands for (sum = 365)
+  Usage in OPF: multiply objective terms by weight to obtain annual values.
+
+nodes.geojson / edges.geojson
+  - Standard GeoJSON, CRS: EPSG:2056 (CH1903+ LV95)
+  - nodes: osmid, x, y, el_dmd, Category, consumers, voltage
+  - edges: line parameters (impedance, capacity)
+
+load_profiles.csv / pv_generation.csv / pv_std.csv
+  - Rows: one per node (identified by LV_grid, LV_osmid)
+  - Columns: timestamps MM-DD HH:MM:SS for each hour of each rep. day
+  - Units: kW
+
+pv_p_installed.csv
+  - Static: installed PV peak power per node [kW]
+
+bess_allocation.csv
+  - Battery_capacity_kWh:      energy capacity [kWh]
+  - Nominal_power_kW:          max charge/discharge power [kW]
+  - Charging_efficiency:       eta_c = 0.922 [-]
+  - Discharging_efficiency:    eta_d = 0.922 [-]
+
+temperature_profiles.csv
+  - Rows: one per temperature profile type
+  - Columns: hourly timestamps [degC]
+  - Used to compute HP power consumption
+
+ev_allocation.csv
+  - EV_share per node: fraction of total municipality EV fleet at this node
+  - Node EV load [kW] = EV_share × ev_power_profiles [kW]
+
+ev_power_profiles.csv
+  - Municipality-level total EV charging load [kW]
+  - 3 rows: Lower / Base / Upper scenario
+  - Columns: hourly timestamps
+
+ev_flexible_energy_profiles.csv
+  - Municipality-level daily flexible EV energy [kWh/day]
+  - Constraint in OPF: sum of flexible charging per day <= this value
+  - Node flexible energy [kWh] = EV_share × ev_flexible_energy_profiles [kWh]
+
+
+================================================================================
+EVOLUTION 2030 -> 2040 -> 2050
+================================================================================
+
+Technology          2030        2040        2050
+--------------------------------------------------
+PV installations      49          68         106
+PV total capacity    316 kW      450 kW      800 kW
+BESS units            13          28          72
+EV nodes (standard) 140         140         140
+EV nodes (alternativ) 50          95         140
+EV max load (Base)   905 kW    3695 kW     6033 kW
+
+
+================================================================================
+USAGE NOTES FOR OPF
+================================================================================
+
+1. Representative days:
+   Use rep_days_summary.csv to get the weight w_d for each day d.
+   Annual objective = sum_d (w_d * cost_d)
+
+2. Node-level EV load:
+   P_EV_node(i, t) = ev_allocation[i] * ev_power_profiles[scenario, t]
+
+3. BESS constraints:
+   - Energy balance: SoC(t+1) = SoC(t) + eta_c*P_charge(t) - P_discharge(t)/eta_d
+   - Power limits:   P_charge, P_discharge <= Nominal_power_kW
+   - Energy limits:  0 <= SoC <= Battery_capacity_kWh
+
+4. EV flexibility:
+   sum_t(P_flex(i,t)) <= ev_allocation[i] * ev_flexible_energy_profiles[d]
+
+5. Choosing between 2703_23 and 2703_23_homogen:
+   - 2703_23 (20 days):        better statistical representation of annual variation
+   - 2703_23_homogen (24 days): guaranteed seasonal balance, easier to interpret
+
+================================================================================
+GENERATED BY: 08_Data_loader.py, 09_Load_representative_days.py,
+              10_Load_homogen_days.py
+CONDA ENV:    SwissPDGs-TimeSeries
+DATA SOURCE:  Zenodo https://doi.org/10.5281/zenodo.15167588
+================================================================================
