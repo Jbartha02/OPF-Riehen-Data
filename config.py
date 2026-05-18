@@ -17,6 +17,9 @@ class Config:
     
     delta_t = 0.25 # hours; TODO: check or update or implement correctly
     
+    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
+    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)] # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
+    
     filename_dict: dict[str, dict[str, str]] = {
         "nodes": {
             "2703-23_0_4": "nodes.geojson"
@@ -163,6 +166,7 @@ class Config:
         node_group_dict = {}
         for tech in fn_node_metadata.keys():
             node_group_dict[tech] = node_metadata_df.index[node_metadata_df[tech] == True].tolist()
+        #TODO: add group 'ALL NODES'
         return node_group_dict
 
 

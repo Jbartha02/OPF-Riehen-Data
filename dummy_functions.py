@@ -7,9 +7,116 @@ import gurobipy as gp
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.lines import Line2D
+from scipy.spatial import ConvexHull
+
+
+#### ----- Dummy functions for testing the FFOR algorithm logic ---- ####
+def empty_iteration_function():
+    """The logic of this dummy function can be used to iterate over multiple optimization directions a,b in the FFOR algorithm."""
+    conf = config.Config()
+    
+    # run optimizations for initial directions of a,b
+    pq_points = []
+    for a,b in conf.optimization_dirs_init:
+        p, q = _dummy_minimizer(a, b)
+        pq_points.append((p, q))
+    
+    # compute initial convex hull after initial optimization directions
+    hull = ConvexHull(pq_points)
+    print(f"Initial convex hull area: {hull.volume}")
+    _plot_convex_hull(pq_points)
+    
+    
+    # optimize every direction defined by the equations of the convex hull (one for each initial direction) and iterate until convergence of the hull area
+    for a,b,c in hull.equations:
+        print(f"Equation: {a}*P + {b}*Q + {c} = 0")
+        pq_points.extend(dummy_iterator(conf, a, b, c, pq_points))
+        
+    # compute final convex hull after iterating over all directions and adding new points
+    hull_final = ConvexHull(pq_points)
+    print(f"Final convex hull area: {hull_final.volume}")
+    _plot_convex_hull(pq_points)
+
+def _dummy_minimizer(a,b) -> tuple[float, float]:
+    # this function is a placeholder
+    # should contain:
+    # - model definition (variables, constraints) # NOTE: maybe it can also be the same model every time, so it could be passed in the function arguments instead
+    # - objective definition with the given a,b
+    # - optimization
+    # - result saving
+    # - return the optimized p and q value
+    return np.random.rand()*5, np.random.rand()*5
+
+def dummy_iterator(conf, a,b,c, pq_points):
+    """This recursive function calculates new points in the (P,Q) space by optimizing in the direction defined by a,b. For every point that increases the convex hull area by more than eta, it iterates again in the two directions adjacent to the new point, until convergence."""
+    print(f"New objective: {a}*P + {b}*Q") # TODO: check signs (maybe revert to -a and -b)
+    # minimize in direction a,b and get new p,q point
+    p,q = _dummy_minimizer(a, b)
+    new_points = [(p, q)]
+
+    # check if the new point increases the area of the convex hull by more than eta
+    hull_old = ConvexHull(pq_points)
+    hull_new = ConvexHull(pq_points + [(p,q)])
+    area_old = hull_old.volume
+    area_new = hull_new.volume
+    if (area_new - area_old) / area_old >= conf.eta_polygon_area:
+        # minimize the two new directions adjacent to the new point and iterate again
+        new_equations = hull_new.equations[~np.isin(hull_new.equations, hull_old.equations).all(axis=1)]
+        
+        for a,b,c in new_equations:
+            new_points.extend(dummy_iterator(conf, a,b,c, pq_points + [(p, q)]))
+    else:
+        # direction is sufficiently converged
+        print(f"Direction {a},{b} converged with area improvement {(area_new - area_old) / area_old:.4f} < {conf.eta_polygon_area}")
+
+    return new_points
+    
+#### ----- END Dummy functions for testing the FFOR algorithm logic ---- ####
 
 
 
+
+def test_convex_hull():
+    # just to see what ConvexHull can do
+    coordinates = [(0, 0), (0, 4), (5, 5), (6, 0)]
+    
+    hull1 = ConvexHull(coordinates)
+    print(f"Convex hull area: {hull1.volume}")
+    print(f"Convex hull vertices: {hull1.vertices}")
+    print(f"Convex hull equations: {hull1.equations}")
+    
+    hull2 = ConvexHull(coordinates + [(-1, 2)])
+    print(f"Convex hull area after adding point: {hull2.volume}")
+    print(f"Convex hull vertices after adding point: {hull2.vertices}")
+    
+    print(f"Convex hull simplices: {hull2.simplices}")
+    print(f"Convex hull equations: {hull2.equations}")
+    print(f"Convex hull neighbors: {hull2.neighbors}")
+    print(f"Convex hull coplanar: {hull2.coplanar}")
+    
+    print(f"Convex hull equations 2 not 1: {hull2.equations[~np.isin(hull2.equations, hull1.equations).all(axis=1)]}")
+    
+    _plot_convex_hull(coordinates + [(-1, 2)])
+
+def _plot_convex_hull(points):
+    points = np.asarray(points, dtype=float)
+    hull = ConvexHull(points)
+    
+    # Plot the convex hull
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    
+    ax.scatter(points[:, 0], points[:, 1], c='red', s=50, zorder=5)
+    
+    for simplex in hull.simplices:
+        ax.plot(points[simplex, 0], points[simplex, 1], 'b-', linewidth=2)
+    
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_title('Convex Hull')
+    ax.grid(True, alpha=0.3)
+    ax.set_aspect('equal')
+    plt.show()
 
 
 # TODO: remove this function again (just to check implementation)
@@ -111,4 +218,6 @@ def plot_octagon_and_circle():
     plt.show()
     
 if __name__ == "__main__":
+    empty_iteration_function()
+    test_convex_hull()
     plot_octagon_and_circle()
