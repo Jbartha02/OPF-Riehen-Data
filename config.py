@@ -283,6 +283,9 @@ class Config:
         
         # create output directory if it does not exist
         os.makedirs(self.output_folder, exist_ok=True)
+
+        # save a snapshot of this config.py file with the results
+        shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
         
         # TODO: implement data inputchecks
         assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
