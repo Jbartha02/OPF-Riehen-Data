@@ -15,9 +15,15 @@ class Config:
     analysis_start_hour: int = 9
     analysis_n_quarterhours: int = 4 * 4 # 6 hours 
     
-    delta_t = 0.25 # hours; TODO: check or update or implement correctly
+    delta_t = 1 # hours; TODO: check or update or implement correctly
     
     filename_dict: dict[str, dict[str, str]] = {
+        "edges": {
+            "2703-23_0_4": "edges.geojson"
+        },
+        "edges_metadata": {
+            "2703-23_0_4": "edges_metadata.csv"
+        },
         "nodes": {
             "2703-23_0_4": "nodes.geojson"
         },
@@ -48,7 +54,15 @@ class Config:
         (np.sqrt(2)-1, 1), (-(np.sqrt(2)-1), 1), (np.sqrt(2)-1, -1), (-(np.sqrt(2)-1), -1)
     ] # list of tuples (a,b) with the coefficients of the linear constraints a*P + b*Q <= S_bess that approximate the circle P^2 + Q^2 <= S_bess^2 with an octagon
     
+    # bases for pu calculation
+    V_base: int = 0.4 # kV
+    S_base: float = 0.63 # MVA
+    Z_base_ohm: float = (V_base**2 / S_base) * 1000
+    I_base_A: float = (S_base / (np.sqrt(3)*V_base)) * 1000
+
     node_metadata_df: pd.DataFrame  # this df defines the indexes of the nodes
+
+    edges_metadata_df: pd.DataFrame # this df defines the indexes of the edges, and contains the parameters of the edges 
     
     # Uncontrollable Load
     p_load: np.ndarray
@@ -87,10 +101,14 @@ class Config:
     node_group_dict: dict[str, list] # e.g., node_group_dict["PV"] is a list with the indexes of the nodes that have PV
     
     def __init__(self):
-        
+
+
         # Nodes and node groups
         self.node_metadata_df = self._ingest_node_metadata(analysis_folder=self.analysis_folder, fn_node_metadata=self.filename_dict["node_metadata"], fn_nodes=self.filename_dict["nodes"])
         self.node_group_dict = self._create_node_groups(node_metadata_df=self.node_metadata_df, fn_node_metadata=self.filename_dict["node_metadata"])
+        
+        # Edges metadata
+        self.edges_metadata_df = self._ingest_network_edges(analysis_folder=self.analysis_folder, fn_edges_metadata=self.filename_dict["edges_metadata"], fn_edges=self.filename_dict["edges"], ordered_node_metadata=self.node_metadata_df)
         
         # Uncontrollable Load
         self.p_load = -1 * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["load"], analysis_day=self.analysis_day, node_metadata=self.node_metadata_df)
@@ -238,6 +256,64 @@ class Config:
                 )
 
         return pd.DataFrame(records, columns=["LV_grid", "LV_osmid"])
+    
+
+
+    def _ingest_network_edges(self, analysis_folder: str, fn_edges_metadata: dict[str, str], fn_edges: dict[str, str], ordered_node_metadata: pd.DataFrame) -> pd.DataFrame:
+        """
+        Extrahiert alle Edges aus dem GeoJSON, verknüpft sie mit den CSV-Metadaten
+        und übersetzt u und v basierend auf der bestehenden node_metadata_df in Matrix-Indizes.
+        """
+        records: list[dict[str, object]] = []
+
+        # iterate over each geojson file (one for each LV grid)
+        for lv_grid, filename in fn_edges.items():
+            geojson_path = f"{analysis_folder}/{filename}"
+            with open(geojson_path, "r", encoding="utf-8") as f:
+                geojson_data = json.load(f)
+
+            # read .geojson files + properties
+            for feature in geojson_data.get("features", []):
+                props = feature.get("properties", {})
+                if "u" not in props or "v" not in props:
+                    continue
+
+                records.append({
+                    "LV_grid": lv_grid,
+                    "u_osmid": int(props["u"]),
+                    "v_osmid": int(props["v"]),
+                    "r": float(props["r"]),
+                    "x": float(props["x"]),
+                    "b": float(props["b"]),
+                    "s_nom": float(props["s_nom"]),
+                    "length": float(props.get("length", 0))
+                })
+
+        all_edges_df = pd.DataFrame(records)
+
+        # 2. csv-metadata of the edges for later indexing
+        for lv_grid, filename in fn_edges_metadata.items():
+            try:
+                metadata_path = f"{analysis_folder}/{filename}"
+                edges_meta_df = pd.read_csv(metadata_path)
+                
+                edges_meta_df = edges_meta_df.rename(
+                    columns={col: f"meta_{col}" for col in edges_meta_df.columns if col not in ["u", "v", "key"]}
+                )
+                all_edges_df = all_edges_df.merge(edges_meta_df, left_on=["u_osmid", "v_osmid"], right_on=["u", "v"], how="left")
+            except FileNotFoundError:
+                pass
+
+        # 3. mapping via node_metadata_df Index
+        osmid_to_matrix_idx = {int(row["LV_osmid"]): idx for idx, row in ordered_node_metadata.iterrows()}
+
+        all_edges_df["u_idx"] = all_edges_df["u_osmid"].map(osmid_to_matrix_idx)
+        all_edges_df["v_idx"] = all_edges_df["v_osmid"].map(osmid_to_matrix_idx)
+
+        all_edges_df["u_idx"] = all_edges_df["u_idx"].astype(int)
+        all_edges_df["v_idx"] = all_edges_df["v_idx"].astype(int)
+
+        return all_edges_df.reset_index(drop=True)
         
     def _post_init_checks(self):
         
