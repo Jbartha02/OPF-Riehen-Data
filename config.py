@@ -6,28 +6,18 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 
-# TODO: profiles to p.u.?
+# TODO: profiles to p.u.? -> check units!
 # TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
 # TODO: correct timestep handling (currently mix of hours and quarterhours, and not implemented correctly yet)
+
+# TODO: use config init for variable parameters
+# TODO: check or precompute ub & lb
 
 
 class Config:
     
     # directories
     base_folder: str = "2703_23_homogen"
-    analysis_year: int = 2050  # year of the scenario (subfolder of base_folder)
-
-    # time parameters
-    analysis_month: int = 8  # month, e.g. 8 for August
-    analysis_day: int = 19  # day of the month, e.g. 9
-    analysis_start_hour: int = 9
-    analysis_n_timesteps: int = 4  # hours, only if 1 timestep it is delta_t hours
-
-    delta_t = 0.25  # hours, ATTENTION: only used if analysis_n_timesteps == 1, otherwise overwritten by '1 hour'
-
-    # optimization parameters
-    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
-    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
 
     # filenames
     filename_dict: dict[str, dict[str, str]] = {
@@ -46,7 +36,11 @@ class Config:
             "t_outdoor": "temperature_profiles.csv"
         } # TODO: preprocess these files; finish implementation
     } # contains the filenames of the input files for each type of data
-    
+
+    # optimization parameters
+    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
+    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
+
     # technology parameters
     pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
     hp_lb_temp: int = 19  #°C
@@ -64,13 +58,25 @@ class Config:
     
 
     # --------- Derived parameters and data structures (calculated in __init__) --------- #
+    # directories
     analysis_folder: str  # folder with the input data
-    output_folder: str  # folder where outputs are stored
+    output_folder: str  # folder where outputs are storedanalysis_year: int = 2050  # year of the scenario (subfolder of base_folder)
+    
+    analysis_year: int  # year of the scenario and subfolder of base_folder
+
+    # time parameters
+    analysis_month: int  # month, e.g. 8 for August
+    analysis_day: int  # day of the month, e.g. 9
+    analysis_start_hour: int
+    analysis_n_timesteps: int  # hours, only if 1 timestep it is delta_t hours
+
+    delta_t: float  # hours, ATTENTION: only used if analysis_n_timesteps == 1, otherwise overwritten by '1 hour'
     
     analysis_date_mm_dd: str
     time_index_list: list[int] # lists the time indexes according to start_hour and n_quarterhours
     time_col_list: list[str] # lists the column names of the time columns in the output files (i.e. timestamps)
 
+    # grid information
     node_group_dict: dict[str, list] # e.g., node_group_dict["PV"] is a list with the indexes of the nodes that have PV
     
     node_metadata_df: pd.DataFrame  # this df defines the indexes of the nodes
@@ -108,8 +114,16 @@ class Config:
     p_ev_ub: np.ndarray
     
 
-    def __init__(self):
+    def __init__(self, year: int, month: int, day: int, start_hour: int, n_timesteps: int, delta_t: float = 1.0):
         
+        # Initialize init parameters
+        self.analysis_year = year
+        self.analysis_month = month
+        self.analysis_day = day
+        self.analysis_start_hour = start_hour
+        self.analysis_n_timesteps = n_timesteps
+        self.delta_t = delta_t
+
         # overwrite delta_t if n_timesteps is not 1
         if self.analysis_n_timesteps != 1 and self.delta_t != 1:
             print("WARNING: Overwriting delta_t to 1 hour.")

@@ -11,7 +11,13 @@ import dummy_functions as dummyfuncs
 
 def main():
     
-    conf = config.Config()
+    conf = config.Config(
+        year=2050,
+        month=8,
+        day=19,
+        start_hour=9,
+        n_timesteps=4,
+    )
     
     model = gp.Model("OPF")
     
