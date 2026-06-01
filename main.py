@@ -244,15 +244,22 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         "q_bess_flex": q_bess_flex,
         "soc_bess": soc_bess,
         "b_bess_charge": b_bess_charge,
-        #"Voltage": V,
+        "Voltage": V,
         # TODO: add EV variables
+    }
+    results_edge_t_dict = {
+        "P_edge": Pf,
+        "Q_edge": Qf,
     }
 
     # extract and save nodal results to longtable
     df = pd.concat([funcs._extract_nodal_results_to_df(conf, var, varname) for varname, var in results_n_t_dict.items()])
-    df.to_csv(f"{conf.output_folder}/results_n_t_a{a}_b{b}.csv", index=False)
-    
-    return p_flex_total[0].X, q_flex_total[0].X # TODO: correct this
+    df.to_csv(f"{conf.output_folder}/results_node_t_a{a}_b{b}.csv", index=False)
+
+    # extract and save edge results to longtable
+    df = pd.concat([funcs._extract_edge_results_to_df(conf, var, varname) for varname, var in results_edge_t_dict.items()])
+    df.to_csv(f"{conf.output_folder}/results_edge_t_a{a}_b{b}.csv", index=False)
+
     
     
 def _maximise_edge_normal(conf: config.Config, a: float, b: float, c: float, pq_flex_points: list[float]):

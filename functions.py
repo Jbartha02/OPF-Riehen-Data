@@ -411,3 +411,30 @@ def _extract_nodal_results_to_df(conf, var, varname) -> pd.DataFrame:
 
     return df
 
+def _extract_edge_results_to_df(conf, var, varname) -> pd.DataFrame:
+    """Create an edge-wise result table from a 3D Gurobi variable indexed by (u, v, timestep).
+
+    The returned DataFrame has one row per edge (same order/index as edges_df),
+    includes u_osmid and v_osmid, as well as Variable, u_idx, and v_idx columns, and one column per timestep.
+    Missing (u, v, timestep) entries are kept as null values.
+    """
+
+    # Start from edges_df so every edge is present exactly once.
+    df = conf.edges_df[["u_osmid", "v_osmid", "u_idx", "v_idx", "s_nom"]].copy()
+    
+    # Add column 'Variable' for identification of values
+    df["Variable"] = varname
+
+    # Add one column per timestep and initialize as null.
+    for t in conf.time_index_list:
+        df[conf.time_col_list[t]] = pd.NA
+
+    # Fill values for (u, v, timestep).
+    if var is not None:
+        for idx, row in df.iterrows():
+            u, v = int(row["u_idx"]), int(row["v_idx"])
+            for t in conf.time_index_list:
+                value = var.get((u, v, t)) if hasattr(var, "get") else var[u, v, t]
+                df.at[idx, conf.time_col_list[t]] = value.X if hasattr(value, "X") else value
+
+    return df
