@@ -1,25 +1,24 @@
 import json
+import os
+import shutil
 
 import numpy as np
 import pandas as pd
+import datetime as dt
 
-# TODO: profiles to p.u.?
+# TODO: profiles to p.u.? -> check units!
 # TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
-# TODO: correct timestep handling (currently mix of hours and quarterhours, and not implemented correctly yet)
 
+# TODO: check or precompute ub & lb
+# TODO: store edge data (P, Q)
+# TODO: config input checks
 
 class Config:
     
-    analysis_folder: str = r"2703_23_homogen/2050"
-    analysis_day: str = "01-08" # "dd-mm"
-    analysis_start_hour: int = 9
-    analysis_n_quarterhours: int = 4 * 4 # 6 hours 
-    
-    delta_t = 1 # hours; TODO: check or update or implement correctly
-    
-    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
-    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)] # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
-    
+    # directories
+    base_folder: str = "2703_23_homogen"
+
+    # filenames
     filename_dict: dict[str, dict[str, str]] = {
         "edges": {
             "2703-23_0_4": "edges.geojson"
@@ -42,26 +41,54 @@ class Config:
             "t_outdoor": "temperature_profiles.csv"
         } # TODO: preprocess these files; finish implementation
     } # contains the filenames of the input files for each type of data
-    
-    pv_max_q_p_ratio: float = 0.3 #TODO: define/update this value
-    hp_lb_temp: int = 19 #°C
-    hp_base_temp: int = 21 #°C
-    hp_ub_temp: int = 23 #°C
-    hp_output_temp: int = 30 #°C the temperature to which the HP heats the water for the heating system, used for cop calculation (assumed to be constant over the year)
-    hp_q_p_ratio: float = 0.3 # TODO: define/update value (maybe also as cos_phi or similar)
+
+    # optimization parameters
+    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
+    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
+
+    # technology parameters
+    pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
+    hp_lb_temp: int = 19  #°C
+    hp_base_temp: int = 21  #°C
+    hp_ub_temp: int = 23  #°C
+    hp_output_temp: int = 30  #°C the temperature to which the HP heats the water for the heating system, used for cop calculation (assumed to be constant over the year)
+    hp_q_p_ratio: float = 0.3  # TODO: define/update value (maybe also as cos_phi or similar)
     bess_soc_lb: float = 0.3
     bess_soc_base: float = 0.5
     bess_soc_ub: float = 0.7
     bess_power_octagon_approximation: list[tuple[float, float]] = [
         (1, np.sqrt(2)-1), (1, -(np.sqrt(2)-1)), (-1, np.sqrt(2)-1), (-1, -(np.sqrt(2)-1)),
         (np.sqrt(2)-1, 1), (-(np.sqrt(2)-1), 1), (np.sqrt(2)-1, -1), (-(np.sqrt(2)-1), -1)
-    ] # list of tuples (a,b) with the coefficients of the linear constraints a*P + b*Q <= S_bess that approximate the circle P^2 + Q^2 <= S_bess^2 with an octagon
+    ]  # list of tuples (a,b) with the coefficients of the linear constraints a*P + b*Q <= S_bess that approximate the circle P^2 + Q^2 <= S_bess^2 with an octagon
     
     # bases for pu calculation
     V_base: int = 0.4 # kV
     S_base: float = 0.63 # MVA
     Z_base_ohm: float = (V_base**2 / S_base) * 1000
     I_base_A: float = (S_base / (np.sqrt(3)*V_base)) * 1000
+    
+
+    # --------- Derived parameters and data structures (calculated in __init__) --------- #
+    # directories
+    analysis_folder: str  # folder with the input data
+    output_folder: str  # folder where outputs are storedanalysis_year: int = 2050  # year of the scenario (subfolder of base_folder)
+    
+    analysis_year: int  # year of the scenario and subfolder of base_folder
+
+    # time parameters
+    analysis_month: int  # month, e.g. 8 for August
+    analysis_day: int  # day of the month, e.g. 9
+    analysis_start_hour: int
+    analysis_n_timesteps: int  # hours, only if 1 timestep it is delta_t hours
+
+    delta_t: float  # hours, ATTENTION: only used if analysis_n_timesteps == 1, otherwise overwritten by '1 hour'
+    
+    analysis_date_mm_dd: str
+    time_index_list: list[int] # lists the time indexes according to start_hour and n_quarterhours
+    time_col_list: list[str] # lists the column names of the time columns in the output files (i.e. timestamps)
+
+    # grid information
+    node_group_dict: dict[str, list] # e.g., node_group_dict["PV"] is a list with the indexes of the nodes that have PV
 
     node_metadata_df: pd.DataFrame  # this df defines the indexes of the nodes
 
@@ -74,7 +101,7 @@ class Config:
     p_pv_ub: np.ndarray
     p_pv_base: np.ndarray
     p_pv_lb: np.ndarray
-    q_pv_base: np.ndarray # TODO: assumed to be zero -> not necessary
+    q_pv_base: np.ndarray # assumed to be zero
     
     # HP
     t_hp_base: np.ndarray
@@ -91,7 +118,7 @@ class Config:
     soc_bess_ub: np.ndarray
     p_bess_base_neg: np.ndarray
     p_bess_base_pos: np.ndarray
-    q_bess_base: np.ndarray # TODO: assumed to be zero -> not necessary
+    q_bess_base: np.ndarray # assumed to be zero
     bess_power_constraints: pd.DataFrame # df with coefficients a,b,c to create approximation of P^2 + Q^2 <= S^2 with an octagon of 8 linear constraints a*P + b*Q <= c  
     
     # EV
@@ -99,31 +126,51 @@ class Config:
     p_ev_base: np.ndarray
     p_ev_ub: np.ndarray
     
-    
-    time_index_list: list[int] # lists the time indexes according to start_hour and n_quarterhours
-    node_group_dict: dict[str, list] # e.g., node_group_dict["PV"] is a list with the indexes of the nodes that have PV
-    
-    def __init__(self):
 
+    def __init__(self, year: int, month: int, day: int, start_hour: int, n_timesteps: int, delta_t: float = 1.0):
+        
+        # Initialize init parameters
+        self.analysis_year = year
+        self.analysis_month = month
+        self.analysis_day = day
+        self.analysis_start_hour = start_hour
+        self.analysis_n_timesteps = n_timesteps
+        self.delta_t = delta_t
 
+        # overwrite delta_t if n_timesteps is not 1
+        if self.analysis_n_timesteps != 1 and self.delta_t != 1:
+            print("WARNING: Overwriting delta_t to 1 hour.")
+            self.delta_t = 1  # hours
+        
+        # directories
+        self.analysis_folder = f"{self.base_folder}/{self.analysis_year}"
+        self.output_folder = f"{self.analysis_folder}/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
+
+        # time parameters
+        self.analysis_date_mm_dd = f"{self.analysis_month:02d}-{self.analysis_day:02d}"
+        self.time_index_list = list(self.analysis_start_hour + np.arange(self.analysis_n_timesteps))
+        self.time_col_list = [f"{(dt.datetime(self.analysis_year, self.analysis_month, self.analysis_day) + dt.timedelta(hours=hour)).strftime('%Y-%m-%d %H:%M:%S')}" for hour in range(48)]
+        
         # Nodes and node groups
         self.node_metadata_df = self._ingest_node_metadata(analysis_folder=self.analysis_folder, fn_node_metadata=self.filename_dict["node_metadata"], fn_nodes=self.filename_dict["nodes"])
         self.node_group_dict = self._create_node_groups(node_metadata_df=self.node_metadata_df, fn_node_metadata=self.filename_dict["node_metadata"])
         
         # Edges metadata
         self.edges_metadata_df = self._ingest_network_edges(analysis_folder=self.analysis_folder, fn_edges_metadata=self.filename_dict["edges_metadata"], fn_edges=self.filename_dict["edges"], ordered_node_metadata=self.node_metadata_df)
-        
+
+
+        # --- Profiles ---
         # Uncontrollable Load
-        self.p_load = -1 * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["load"], analysis_day=self.analysis_day, node_metadata=self.node_metadata_df)
+        self.p_load = -1 * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["load"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         
         # PV
-        self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"], analysis_day=self.analysis_day, node_metadata=self.node_metadata_df)
-        self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"], analysis_day=self.analysis_day, node_metadata=self.node_metadata_df)
-        self.p_pv_lb = np.zeros_like(self.p_pv_ub)
-        self.q_pv_base = np.zeros_like(self.p_pv_base)
+        self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_pv_lb = np.zeros_like(self.p_load)
+        self.q_pv_base = np.zeros_like(self.p_load) # assumed to be zero
         
         # HP
-        self.t_outdoor = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_day).squeeze() #TODO
+        self.t_outdoor = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
         self.t_hp_ub = self.hp_ub_temp * np.ones_like(self.p_load)
         self.t_hp_base = self.hp_base_temp * np.ones_like(self.p_load)
         self.t_hp_lb = self.hp_lb_temp * np.ones_like(self.p_load)
@@ -135,12 +182,12 @@ class Config:
         self.soc_bess_base = self.bess_soc_base * np.ones_like(self.p_load)
         self.soc_bess_lb = self.bess_soc_lb * np.ones_like(self.p_load)
         self.p_bess_base_neg, self.p_bess_base_pos = self._calculate_bess_p(node_metadata_df=self.node_metadata_df, soc_bess_base=self.soc_bess_base)
-        self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # TODO: assumed to be zero -> not necessary
+        self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
         
         # TODO: add other profiles
         
-        self.time_index_list = list(self.analysis_start_hour + np.arange(int(self.analysis_n_quarterhours/4))) # TODO: implement correctly
         
+        # Some data checks
         self._post_init_checks()
 
 
@@ -182,9 +229,11 @@ class Config:
     def _create_node_groups(self, node_metadata_df: pd.DataFrame, fn_node_metadata: dict[str, str]) -> dict[str, list[int]]:
         """Creates a dictionary with lists of node indexes of a node group (e.g. PV, BESS, EV, etc) with the same keys as self.filenames_node_metadata, where each list contains all nodes having that technology."""
         node_group_dict = {}
+        # add groups of technology
         for tech in fn_node_metadata.keys():
             node_group_dict[tech] = node_metadata_df.index[node_metadata_df[tech] == True].tolist()
-        #TODO: add group 'ALL NODES'
+        # add group of all nodes
+        node_group_dict["ALL NODES"] = node_metadata_df.index.tolist()
         return node_group_dict
 
 
@@ -204,6 +253,7 @@ class Config:
         """Filters the loadprofile_df to the columns of the analysis_day, converts to np.nd_array, and extends the data two days (copy cols)."""
         # filter columns of the analysis day
         time_column_list = [col for col in loadprofile_df.columns if col.startswith(analysis_day)]
+        print("WARNING: No time columns found for the analysis_date_mm_dd. Check input!") if len(time_column_list) == 0 else None
         np_array = loadprofile_df.loc[:, time_column_list].to_numpy()
 
         return np.hstack([np_array, np_array]) # copy the profiles to the next day, to enable periods that cross midnight
@@ -321,8 +371,22 @@ class Config:
         
     def _post_init_checks(self):
         
+        # create output directory if it does not exist
+        os.makedirs(self.output_folder, exist_ok=True)
+
+        # save a snapshot of this config.py file with the results
+        shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
+        
         # TODO: implement data inputchecks
         assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
         
+        assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
+        assert (self.q_bess_base == np.zeros_like(self.p_load)).all(), "q_bess_base is assumed to be zero, check input"
+        
+        assert np.logical_or(self.p_bess_base_neg <= 0, np.isnan(self.p_bess_base_neg)).all(), "p_bess_base_neg is assumed to be negative (charging), check input"
+        assert np.logical_or(self.p_bess_base_pos >= 0, np.isnan(self.p_bess_base_pos)).all(), "p_bess_base_pos is assumed to be positive (discharging), check input"
+        
+        assert 0 <= self.bess_soc_lb < self.bess_soc_base < self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
+        assert 17 <= self.hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
     
     

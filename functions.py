@@ -376,8 +376,38 @@ def add_lindistflow_to_model(
             if np.isfinite(Smax) and Smax > 0:
                 for t in range(Tn):
                     model.addQConstr(
-                        P[i, j, t] * P[i, j, t] + Q[i, j, t] * Q[i, j, t] <= Smax * Smax,
+                        P[i, j, t] * P[i, j, t] + Q[i, j, t] * Q[i, j, t] <= Smax * Smax, # TODO: linearise
                         name=f"S_limit[{i},{j},{t}]"
                     )
 
     return V, P, Q
+
+
+def _extract_nodal_results_to_df(conf, var, varname) -> pd.DataFrame:
+    """Create a node-wise result table from a 2D Gurobi variable indexed by (node, timestep).
+
+    The returned DataFrame has one row per node (same order/index as node_metadata_df),
+    includes LV_grid and LV_osmid, as well as Variable and Node columns, and one column per timestep.
+    Missing (node, timestep) entries are kept as null values.
+    """
+
+    # Start from node metadata so every node is present exactly once.
+    df = conf.node_metadata_df[["LV_grid", "LV_osmid"]].copy()
+    
+    # Add columns 'Variable' and 'Node' for identification of values
+    df = df.reset_index().rename(columns={"index": "Node"})
+    df["Variable"] = varname
+
+    # Add one column per timestep and initialize as null.
+    for t in conf.time_index_list:
+        df[conf.time_col_list[t]] = pd.NA
+
+    # Fill values for (node, timestep).
+    if var is not None:
+        for node in df["Node"]:
+            for t in conf.time_index_list:
+                value = var.get((node, t)) if hasattr(var, "get") else var[node, t]
+                df.at[node, conf.time_col_list[t]] = value.X if hasattr(value, "X") else value
+
+    return df
+

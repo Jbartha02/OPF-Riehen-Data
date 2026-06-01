@@ -6,6 +6,7 @@ import config
 import gurobipy as gp
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.lines import Line2D
 from scipy.spatial import ConvexHull
 
@@ -18,7 +19,7 @@ def empty_iteration_function():
     # run optimizations for initial directions of a,b
     pq_points = []
     for a,b in conf.optimization_dirs_init:
-        p, q = _dummy_minimizer(a, b)
+        p, q = _dummy_minimizer(conf, a, b)
         pq_points.append((p, q))
     
     # compute initial convex hull after initial optimization directions
@@ -37,7 +38,8 @@ def empty_iteration_function():
     print(f"Final convex hull area: {hull_final.volume}")
     _plot_convex_hull(pq_points)
 
-def _dummy_minimizer(a,b) -> tuple[float, float]:
+
+def _dummy_minimizer(conf, a, b) -> tuple[float, float]:
     # this function is a placeholder
     # should contain:
     # - model definition (variables, constraints) # NOTE: maybe it can also be the same model every time, so it could be passed in the function arguments instead
@@ -45,13 +47,69 @@ def _dummy_minimizer(a,b) -> tuple[float, float]:
     # - optimization
     # - result saving
     # - return the optimized p and q value
-    return np.random.rand()*5, np.random.rand()*5
+    
+    # result saving example:
+    p_pv, p_pv_flex, p_hp, p_hp_flex, p_bess_pos, p_bess_neg = (
+        np.random.rand(len(conf.node_metadata_df), 48) * 10,
+        np.random.rand(len(conf.node_metadata_df), 48) * 1,
+        np.random.rand(len(conf.node_metadata_df), 48) * 30,
+        np.random.rand(len(conf.node_metadata_df), 48) * 100,
+        np.random.rand(len(conf.node_metadata_df), 48) * 0.1,
+        np.random.rand(len(conf.node_metadata_df), 48) * 10,
+    )  # TODO: placeholder; these should be defined in the model definition part
+    
+    # define variables to output
+    results_n_t_dict = {
+        "p_pv": p_pv,
+        "p_pv_flex": p_pv_flex,
+        "p_hp": p_hp,
+        "p_hp_flex": p_hp_flex,
+        "p_bess_pos": p_bess_pos,
+        "p_bess_neg": p_bess_neg,
+        # TODO: extend to all variables that should be output to a longtable
+    }
 
-def dummy_iterator(conf, a,b,c, pq_points):
+    # extract and save nodal results to longtable
+    df = pd.concat([_extract_nodal_results_to_df(conf, var, varname) for varname, var in results_n_t_dict.items()])
+    df.to_csv(f"{conf.output_folder}/results_n_t_a{a}_b{b}.csv", index=False)
+    
+    return np.random.rand() * 5, np.random.rand() * 5
+
+
+def _extract_nodal_results_to_df(conf, var, varname) -> pd.DataFrame:
+    """Create a node-wise result table from a 2D Gurobi variable indexed by (node, timestep).
+
+    The returned DataFrame has one row per node (same order/index as node_metadata_df),
+    includes LV_grid and LV_osmid, as well as Variable and Node columns, and one column per timestep.
+    Missing (node, timestep) entries are kept as null values.
+    """
+
+    # Start from node metadata so every node is present exactly once.
+    df = conf.node_metadata_df[["LV_grid", "LV_osmid"]].copy()
+    
+    # Add columns 'Variable' and 'Node' for identification of values
+    df = df.reset_index().rename(columns={"index": "Node"})
+    df["Variable"] = varname
+
+    # Add one column per timestep and initialize as null.
+    for t in conf.time_index_list:
+        df[conf.time_col_list[t]] = pd.NA
+
+    # Fill values for (node, timestep).
+    if var is not None:
+        for node in df["Node"]:
+            for t in conf.time_index_list:
+                value = var.get((node, t)) if hasattr(var, "get") else var[node, t]
+                df.at[node, conf.time_col_list[t]] = value.X if hasattr(value, "X") else value
+
+    return df
+
+
+def dummy_iterator(conf, a, b, c, pq_points):
     """This recursive function calculates new points in the (P,Q) space by optimizing in the direction defined by a,b. For every point that increases the convex hull area by more than eta, it iterates again in the two directions adjacent to the new point, until convergence."""
     print(f"New objective: {a}*P + {b}*Q") # TODO: check signs (maybe revert to -a and -b)
     # minimize in direction a,b and get new p,q point
-    p,q = _dummy_minimizer(a, b)
+    p,q = _dummy_minimizer(conf, a, b)
     new_points = [(p, q)]
 
     # check if the new point increases the area of the convex hull by more than eta
@@ -219,5 +277,5 @@ def plot_octagon_and_circle():
     
 if __name__ == "__main__":
     empty_iteration_function()
-    test_convex_hull()
-    plot_octagon_and_circle()
+    # test_convex_hull()
+    # plot_octagon_and_circle()
