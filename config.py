@@ -9,8 +9,6 @@ import datetime as dt
 # TODO: profiles to p.u.? -> check units!
 # TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
 
-# TODO: check or precompute ub & lb
-# TODO: store edge data (P, Q)
 # TODO: config input checks
 
 class Config:
