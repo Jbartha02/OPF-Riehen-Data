@@ -139,6 +139,10 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             if qpv is not None: expr_Q += qpv
             if qhp is not None: expr_Q += qhp
             if qbe is not None: expr_Q += qbe
+            
+            # TODO: simpler:
+            #expr_P = conf.p_load[i, tcol] + p_pv.get((i, tcol), 0) + p_hp.get((i, tcol), 0) + p_bess_pos.get((i, tcol), 0) + p_bess_neg.get((i, tcol), 0)
+            #expr_Q = q_pv.get((i, tcol), 0) + q_hp.get((i, tcol), 0) + q_bess.get((i, tcol), 0)
 
             # Scale to p.u.
             P_inj_expr[(i, idx_t)] = (1.0 / Sbase_kW) * expr_P # TODO pu base not clear of kW or MW
@@ -162,20 +166,25 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     p_flex_total = model.addVars(range(T), lb=-GRB.INFINITY, name="p_flex_total")
     q_flex_total = model.addVars(range(T), lb=-GRB.INFINITY, name="q_flex_total")
 
-    for idx_t, tcol in enumerate(conf.time_index_list):
+    for t in conf.time_index_list:
         model.addConstr(
-            p_flex_total[idx_t]
-            == gp.quicksum(p_pv_flex[n, tcol]  for n in conf.node_group_dict["PV"])
-            +  gp.quicksum(p_hp_flex[n, tcol]  for n in conf.node_group_dict["HP"])
-            +  gp.quicksum(p_bess_flex[n, tcol] for n in conf.node_group_dict["BESS"]),
-            name=f"p_flex_total[{idx_t}]"
+            p_flex_total
+            == gp.quicksum(
+                p_pv_flex.get((n, t), 0)
+                + p_hp_flex.get((n, t), 0)
+                + p_bess_flex.get((n, t), 0)
+                for n in conf.node_group_dict["ALL Nodes"]
+            ),
+            name=f"p_flex_total[{t}]"
         )
         model.addConstr(
-            q_flex_total[idx_t]
-            == gp.quicksum(q_pv_flex[n, tcol]  for n in conf.node_group_dict["PV"])
-            +  gp.quicksum(q_hp_flex[n, tcol]  for n in conf.node_group_dict["HP"])
-            +  gp.quicksum(q_bess_flex[n, tcol] for n in conf.node_group_dict["BESS"]),
-            name=f"q_flex_total[{idx_t}]"
+            q_flex_total
+            == gp.quicksum(
+                q_pv_flex.get((n, t), 0)
+                + q_hp_flex.get((n, t), 0)
+                + q_bess_flex.get((n, t), 0)
+                for n in conf.node_group_dict["ALL Nodes"]),
+            name=f"q_flex_total[{t}]"
         )
 
     alpha = 1.0   # weight on active flex

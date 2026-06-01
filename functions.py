@@ -11,15 +11,22 @@ import config
 
 def define_pv_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tupledict, gp.tupledict]:
     """Define all pv variables and their relationships (bounds and balance constraints) in the optimization model."""
+    nodes = conf.node_group_dict["PV"]
+    times = conf.time_index_list
+    
+    # bound helper variables
+    p_pv_ub_abs = np.abs(np.nanmax(conf.p_pv_ub))
+    q_pv_ub_abs = conf.pv_max_q_p_ratio * p_pv_ub_abs
+    
     # Initialize variables
-    p_pv = model.addVars(conf.node_group_dict["PV"], conf.time_index_list, lb=0, ub=np.nanmax(conf.p_pv_ub), vtype=GRB.CONTINUOUS, name="p_pv") # TODO: update bounds
-    p_pv_flex = model.addVars(conf.node_group_dict["PV"], conf.time_index_list, lb=-np.nanmax(conf.p_pv_ub), ub=np.nanmax(conf.p_pv_ub), vtype=GRB.CONTINUOUS, name="p_pv_flex") #TODO: update bounds
-    q_pv = model.addVars(conf.node_group_dict["PV"], conf.time_index_list, lb=-conf.pv_max_q_p_ratio*np.nanmax(conf.p_pv_ub), ub=conf.pv_max_q_p_ratio*np.nanmax(conf.p_pv_ub), vtype=GRB.CONTINUOUS, name="q_pv") #TODO: set this to flex
+    p_pv = model.addVars(nodes, times, lb=0, ub=p_pv_ub_abs, vtype=GRB.CONTINUOUS, name="p_pv")
+    p_pv_flex = model.addVars(nodes, times, lb=-p_pv_ub_abs, ub=p_pv_ub_abs, vtype=GRB.CONTINUOUS, name="p_pv_flex")
+    q_pv = model.addVars(nodes, times, lb=-q_pv_ub_abs, ub=q_pv_ub_abs, vtype=GRB.CONTINUOUS, name="q_pv")
     q_pv_flex = q_pv # only because q_pv_base is zero!
     
     # Define constraints
-    for node in conf.node_group_dict["PV"]:
-        for t in conf.time_index_list:
+    for node in nodes:
+        for t in times:
             model.addConstr(
                 p_pv[node, t] == conf.p_pv_base[node, t] + p_pv_flex[node, t],
                 name=f"pv_balance_n{node}_t{t}",
@@ -41,17 +48,26 @@ def define_pv_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
 
 def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tupledict, gp.tupledict]:
     """Define all hp variables and their relationships (bounds and balance constraints) in the optimization model."""
+    nodes = conf.node_group_dict["HP"]
+    times = conf.time_index_list
+    
+    # bound helper variables
+    p_hp_ub_abs = np.abs(conf.node_metadata_df.loc[conf.node_group_dict["HP"], "HP_Nominal_power_kW"].to_numpy()).max()
+    q_hp_ub_abs = p_hp_ub_abs * conf.hp_q_p_ratio
+    t_hp_lb = np.nanmin(conf.t_hp_lb)
+    t_hp_ub = np.nanmax(conf.t_hp_ub)
+    
     # Initialize variables
-    p_hp = model.addVars(conf.node_group_dict["HP"], conf.time_index_list, lb=np.nanmin(conf.p_hp_base), ub=0, vtype=GRB.CONTINUOUS, name="p_hp") # TODO: update bounds
-    p_hp_flex = model.addVars(conf.node_group_dict["HP"], conf.time_index_list, lb=np.nanmin(conf.p_hp_base), ub=-np.nanmin(conf.p_hp_base), vtype=GRB.CONTINUOUS, name="p_hp_flex") #TODO: update bounds
-    q_hp = model.addVars(conf.node_group_dict["HP"], conf.time_index_list, lb=conf.hp_q_p_ratio*np.nanmin(conf.p_hp_base), ub=0, vtype=GRB.CONTINUOUS, name="q_hp") #TODO: remove this (can be replaced in equations)
-    q_hp_flex = model.addVars(conf.node_group_dict["HP"], conf.time_index_list, lb=conf.hp_q_p_ratio*np.nanmin(conf.p_hp_base), ub=-conf.hp_q_p_ratio*np.nanmin(conf.p_hp_base), vtype=GRB.CONTINUOUS, name="q_hp_flex") #TODO: update bounds
-    t_hp = model.addVars(conf.node_group_dict["HP"], conf.time_index_list, lb=np.nanmin(conf.t_hp_lb), ub=np.nanmax(conf.t_hp_ub), vtype=GRB.CONTINUOUS, name="t_hp") #TODO: update bounds
+    p_hp = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_hp")
+    p_hp_flex = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=p_hp_ub_abs, vtype=GRB.CONTINUOUS, name="p_hp_flex")
+    q_hp = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="q_hp") #TODO: remove this (can be replaced in equations)
+    q_hp_flex = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=q_hp_ub_abs, vtype=GRB.CONTINUOUS, name="q_hp_flex")
+    t_hp = model.addVars(nodes, times, lb=t_hp_lb, ub=t_hp_ub, vtype=GRB.CONTINUOUS, name="t_hp")
     
     # Define constraints
-    for node in conf.node_group_dict["HP"]:
-        for t in conf.time_index_list:
-            if t == conf.time_index_list[0]:
+    for node in nodes:
+        for t in times:
+            if t == times[0]:
                 model.addConstr(
                     -p_hp[node, t] * conf.cop_hp[node, t]
                     == conf.node_metadata_df.loc[node, "HP_Thermal_capacitance_KWh/K"] / conf.delta_t
@@ -95,21 +111,29 @@ def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
 
 def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tupledict, gp.tupledict]:
     """Define all bess variables and their relationships (bounds and balance constraints) in the optimization model."""
+    nodes = conf.node_group_dict["BESS"]
+    times = conf.time_index_list
+    
+    # bound helper variables
+    s_bess_ub_abs = np.abs(conf.node_metadata_df.loc[conf.node_group_dict["BESS"], "BESS_Nominal_power_kW"].to_numpy()).max()
+    
     # Initialize variables
-    p_bess_pos = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, lb=0, ub=np.nanmax(conf.node_metadata_df["BESS_Nominal_power_kW"].to_numpy()), vtype=GRB.CONTINUOUS, name="p_bess_pos") # TODO: update bounds
-    p_bess_neg = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, lb=-np.nanmax(conf.node_metadata_df["BESS_Nominal_power_kW"].to_numpy()), ub=0, vtype=GRB.CONTINUOUS, name="p_bess_neg") # TODO: update bounds
-    p_bess_flex = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, lb=-np.nanmax(conf.node_metadata_df["BESS_Nominal_power_kW"].to_numpy()), ub=np.nanmax(conf.node_metadata_df["BESS_Nominal_power_kW"].to_numpy()), vtype=GRB.CONTINUOUS, name="p_bess_flex") #TODO: update bounds
-    q_bess = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, lb=-np.nanmax(conf.node_metadata_df["BESS_Nominal_power_kW"].to_numpy()), ub=np.nanmax(conf.node_metadata_df["BESS_Nominal_power_kW"].to_numpy()), vtype=GRB.CONTINUOUS, name="q_bess") #TODO: update bounds
+    p_bess_pos = model.addVars(nodes, times, lb=0, ub=s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="p_bess_pos")
+    p_bess_neg = model.addVars(nodes, times, lb=-s_bess_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_bess_neg")
+    p_bess_flex = model.addVars(nodes, times, lb=-2*s_bess_ub_abs, ub=2*s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="p_bess_flex")
+    q_bess = model.addVars(nodes, times, lb=-s_bess_ub_abs, ub=s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="q_bess")
     q_bess_flex = q_bess # only because q_bess_base is zero!
-    soc_bess = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, lb=0, ub=1, vtype=GRB.CONTINUOUS, name="soc_bess") # TODO: update bounds
-    b_bess_charge = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, vtype=GRB.BINARY, name="b_bess_charge")
+    soc_bess = model.addVars(nodes, times, lb=0, ub=1, vtype=GRB.CONTINUOUS, name="soc_bess")
+    b_bess_charge = model.addVars(nodes, times, vtype=GRB.BINARY, name="b_bess_charge")
     
     # Define constraints
+    for node in nodes:
         eta_ch = conf.node_metadata_df.loc[node, "BESS_Charging_efficiency"]
         eta_disch = conf.node_metadata_df.loc[node, "BESS_Discharging_efficiency"]
         capacity_kWh = conf.node_metadata_df.loc[node, "BESS_Battery_capacity_kWh"]
         power_kVA = conf.node_metadata_df.loc[node, "BESS_Nominal_power_kW"]
         for t in times:
+            if t == times[0]:
                 model.addConstr(
                     soc_bess[node, t] == conf.soc_bess_base[node, t+23] - conf.delta_t / capacity_kWh * (conf.p_bess_base_pos[node, t+23] * eta_ch + conf.p_bess_base_neg[node, t-1] / eta_disch), # TODO: implement delta_t?
                     name=f"soc_bess_balance_n{node}_t{t}",
@@ -129,10 +153,10 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
                 soc_bess[node, t] >= conf.soc_bess_lb[node, t], name=f"soc_bess_lb_n{node}_t{t}"
             )
             model.addConstr(
-                p_bess_pos[node, t] <= conf.node_metadata_df.loc[node, "BESS_Nominal_power_kW"] * b_bess_charge[node, t], name=f"p_bess_pos_charge_n{node}_t{t}"
+                p_bess_pos[node, t] <= power_kVA * b_bess_charge[node, t], name=f"p_bess_pos_charge_n{node}_t{t}"
             )
             model.addConstr(
-                p_bess_neg[node, t] >= -conf.node_metadata_df.loc[node, "BESS_Nominal_power_kW"] * (1 - b_bess_charge[node, t]), name=f"p_bess_neg_discharge_n{node}_t{t}"
+                p_bess_neg[node, t] >= -power_kVA * (1 - b_bess_charge[node, t]), name=f"p_bess_neg_discharge_n{node}_t{t}"
             )
             model.addConstr(
                 p_bess_pos[node, t] >= 0, name=f"p_bess_pos_lb_n{node}_t{t}"
@@ -142,7 +166,7 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
             )
             for a, b in conf.bess_power_octagon_approximation:
                 model.addConstr(
-                    a * (p_bess_pos[node, t] + p_bess_neg[node, t]) + b * q_bess[node, t] <= conf.node_metadata_df.loc[node, "BESS_Nominal_power_kW"], name=f"bess_power_octagon_n{node}_t{t}_a{a}_b{b}"
+                    a * (p_bess_pos[node, t] + p_bess_neg[node, t]) + b * q_bess[node, t] <= power_kVA, name=f"bess_power_octagon_n{node}_t{t}_a{a}_b{b}"
                 )
                 
     return p_bess_pos, p_bess_neg, p_bess_flex, q_bess, q_bess_flex, soc_bess, b_bess_charge
