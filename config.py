@@ -71,7 +71,7 @@ class Config:
     # --------- Derived parameters and data structures (calculated in __init__) --------- #
     # directories
     analysis_folder: str  # folder with the input data
-    output_folder: str  # folder where outputs are storedanalysis_year: int = 2050  # year of the scenario (subfolder of base_folder)
+    output_folder: str  # folder where outputs are stored
     
     analysis_year: int  # year of the scenario and subfolder of base_folder
 
@@ -170,10 +170,11 @@ class Config:
         self.q_pv_base = np.zeros_like(self.p_load) # assumed to be zero
         
         # HP
-        self.t_outdoor = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
         self.t_hp_ub = self.hp_ub_temp * np.ones_like(self.p_load)
         self.t_hp_base = self.hp_base_temp * np.ones_like(self.p_load)
         self.t_hp_lb = self.hp_lb_temp * np.ones_like(self.p_load)
+        t_outdoor_raw = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
+        self.t_outdoor = np.minimum(t_outdoor_raw, self.hp_lb_temp) # make sure that t_outdoor is always smaller than hp_lb_temp to avoid negative delta_t and thus negative p_hp_base
         self.cop_hp, self.p_hp_base = self._calculate_hp_cop_and_p(node_metadata_df=self.node_metadata_df, hp_output_temp=self.hp_output_temp, t_outdoor=self.t_outdoor, t_hp_base=self.t_hp_base)
         self.q_hp_base = self.p_hp_base * self.hp_q_p_ratio
         
@@ -386,7 +387,9 @@ class Config:
         assert np.logical_or(self.p_bess_base_neg <= 0, np.isnan(self.p_bess_base_neg)).all(), "p_bess_base_neg is assumed to be negative (charging), check input"
         assert np.logical_or(self.p_bess_base_pos >= 0, np.isnan(self.p_bess_base_pos)).all(), "p_bess_base_pos is assumed to be positive (discharging), check input"
         
-        assert 0 <= self.bess_soc_lb < self.bess_soc_base < self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
-        assert 17 <= self.hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
-    
+        # t_outdoor
+        assert self.t_outdoor.max() <= self.hp_lb_temp, "Check that the outdoor temperature profile is always smaller than the HP lower bound temperature to avoid negative delta_t and thus negative p_hp_base"
+        assert np.logical_or(self.p_hp_base <= 0, np.isnan(self.p_hp_base)).all(), "Check that the HP power profile is always negative (consumption) to avoid issues with the optimization and interpretation of results"
+        assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
+        
     
