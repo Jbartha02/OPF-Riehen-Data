@@ -8,11 +8,11 @@ import datetime as dt
 
 # TODO: profiles to p.u.? -> check units!
 # TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
-# TODO: correct timestep handling (currently mix of hours and quarterhours, and not implemented correctly yet)
 
-# TODO: use config init for variable parameters
 # TODO: check or precompute ub & lb
-
+# TODO: store p,q
+# TODO: store edge data (P, Q)
+# TODO: config input checks
 
 class Config:
     
@@ -213,9 +213,11 @@ class Config:
     def _create_node_groups(self, node_metadata_df: pd.DataFrame, fn_node_metadata: dict[str, str]) -> dict[str, list[int]]:
         """Creates a dictionary with lists of node indexes of a node group (e.g. PV, BESS, EV, etc) with the same keys as self.filenames_node_metadata, where each list contains all nodes having that technology."""
         node_group_dict = {}
+        # add groups of technology
         for tech in fn_node_metadata.keys():
             node_group_dict[tech] = node_metadata_df.index[node_metadata_df[tech] == True].tolist()
-        #TODO: add group 'ALL NODES'
+        # add group of all nodes
+        node_group_dict["ALL NODES"] = node_metadata_df.index.tolist()
         return node_group_dict
 
 
