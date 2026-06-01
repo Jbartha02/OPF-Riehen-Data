@@ -171,7 +171,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
                 p_pv_flex.get((n, t), 0)
                 + p_hp_flex.get((n, t), 0)
                 + p_bess_flex.get((n, t), 0)
-                for n in conf.node_group_dict["ALL Nodes"]
+                for n in conf.node_group_dict["ALL NODES"]
             ),
             name=f"p_flex_total[{t}]"
         )
@@ -181,7 +181,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
                 q_pv_flex.get((n, t), 0)
                 + q_hp_flex.get((n, t), 0)
                 + q_bess_flex.get((n, t), 0)
-                for n in conf.node_group_dict["ALL Nodes"]),
+                for n in conf.node_group_dict["ALL NODES"]),
             name=f"q_flex_total[{t}]"
         )
 

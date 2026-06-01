@@ -447,7 +447,7 @@ def _extract_edge_results_to_df(conf, var, varname) -> pd.DataFrame:
     """
 
     # Start from edges_df so every edge is present exactly once.
-    df = conf.edges_df[["u_osmid", "v_osmid", "u_idx", "v_idx", "s_nom"]].copy()
+    df = conf.edges_metadata_df[["u_osmid", "v_osmid", "u_idx", "v_idx", "s_nom"]].copy()
     
     # Add column 'Variable' for identification of values
     df["Variable"] = varname
