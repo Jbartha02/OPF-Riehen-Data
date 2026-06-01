@@ -369,31 +369,32 @@ def add_lindistflow_to_model(
 
     # KCL at nodes
     for i in nodes:
-        parent_node = inc_in[i]
-        childs = inc_out[i]
-        for t in range(Tn):
-            # Active
-            expr_in_P = gp.LinExpr(0.0)
-            if parent_node is not None:
-                expr_in_P += P[parent_node, i, t]
-            expr_out_P = gp.quicksum(P[i, k, t] for k in childs)
+        if i != root: # root node has no parent and is not constrained by KCL (slack bus)
+            parent_node = inc_in[i]
+            childs = inc_out[i]
+            for t in range(Tn):
+                # Active
+                expr_in_P = gp.LinExpr(0.0)
+                if parent_node is not None:
+                    expr_in_P += P[parent_node, i, t]
+                expr_out_P = gp.quicksum(P[i, k, t] for k in childs)
 
-            # --- FIX: handle both float and LinExpr ---
-            inj_P = P_inj.get((i, t), 0.0)
-            model.addConstr(
-                expr_in_P - expr_out_P + inj_P == 0.0,
-                name=f"kclP[{i},{t}]"            )
+                # --- FIX: handle both float and LinExpr ---
+                inj_P = P_inj.get((i, t), 0.0)
+                model.addConstr(
+                    expr_in_P - expr_out_P + inj_P == 0.0,
+                    name=f"kclP[{i},{t}]"            )
 
-            # Reactive
-            expr_in_Q = gp.LinExpr(0.0)
-            if parent_node is not None:
-                expr_in_Q += Q[parent_node, i, t]
-            expr_out_Q = gp.quicksum(Q[i, k, t] for k in childs)
+                # Reactive
+                expr_in_Q = gp.LinExpr(0.0)
+                if parent_node is not None:
+                    expr_in_Q += Q[parent_node, i, t]
+                expr_out_Q = gp.quicksum(Q[i, k, t] for k in childs)
 
-            inj_Q = Q_inj.get((i, t), 0.0)
-            model.addConstr(
-                expr_in_Q - expr_out_Q + inj_Q == 0.0,
-                name=f"kclQ[{i},{t}]"            )
+                inj_Q = Q_inj.get((i, t), 0.0)
+                model.addConstr(
+                    expr_in_Q - expr_out_Q + inj_Q == 0.0,
+                    name=f"kclQ[{i},{t}]"            )
 
     # Line S limits
     if use_soc_lines:

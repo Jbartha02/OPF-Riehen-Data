@@ -30,10 +30,10 @@ def main():
     
     # run each scenario in conf_list
     for conf in conf_list:
-        _run_analyis(conf=conf())
+        _run_analysis(conf=conf())
 
     
-def _run_analyis(conf: config.Config):
+def _run_analysis(conf: config.Config):
     """This function orchestrates the optimization of the FFOR for a single configuration conf."""
     
     # run optimizations for initial directions of a,b
@@ -160,11 +160,9 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     root = ldf_data["root"]
     children_root = ldf_data["incidence_out"][root]
 
-    # TODO: correct this (make it independent of time)
-    # Total flex per time: sum of all device flex variables (kW, kVAr)
-    # same quantities as in the dummy, but now constrained by the grid.
-    p_flex_total = model.addVars(range(T), lb=-GRB.INFINITY, name="p_flex_total")
-    q_flex_total = model.addVars(range(T), lb=-GRB.INFINITY, name="q_flex_total")
+    # Total flexibility variables
+    p_flex_total = model.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY, name="p_flex_total")
+    q_flex_total = model.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY, name="q_flex_total")
 
     for t in conf.time_index_list:
         model.addConstr(
@@ -187,16 +185,13 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             name=f"q_flex_total[{t}]"
         )
 
-    alpha = 1.0   # weight on active flex
-    beta  = 1.0   # weight on reactive flex
-
     # Maximize total flexibility (minimize negative flex)
     # Scale to p.u. to keep objective dimensionally consistent with grid vars
     model.setObjective(
-        -alpha * gp.quicksum(p_flex_total[tt] for tt in range(T)) / Sbase_kW
-        - beta  * gp.quicksum(q_flex_total[tt] for tt in range(T)) / Sbase_kW,
+        -a * p_flex_total / Sbase_kW
+        -b * q_flex_total / Sbase_kW,
         GRB.MINIMIZE
-    ) # TODO: maximize a constant p_flex, q_flex, not a sum over time
+    )
 
     # 7) Solve
     model.Params.OutputFlag = 1
@@ -211,8 +206,8 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         print("\n  t  | p_flex_total (kW) | q_flex_total (kVAr) | Ppcc (kW)  | Qpcc (kVAr)")
         print("  " + "-"*75)
         for idx_t in range(T):
-            pft = p_flex_total[idx_t].X
-            qft = q_flex_total[idx_t].X
+            pft = p_flex_total.X
+            qft = q_flex_total.X
             ppcc = sum(Pf[root, j, idx_t].X for j in children_root) * Sbase_kW
             qpcc = sum(Qf[root, j, idx_t].X for j in children_root) * Sbase_kW
             print(f"  {conf.time_index_list[idx_t]:2d} | {pft:17.2f} | {qft:19.2f} | {ppcc:10.2f} | {qpcc:10.2f}")
@@ -269,9 +264,11 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     df = pd.concat([funcs._extract_edge_results_to_df(conf, var, varname) for varname, var in results_edge_t_dict.items()])
     df.to_csv(f"{conf.output_folder}/results_edge_t_a{a}_b{b}.csv", index=False)
 
+
+    return p_flex_total.X, q_flex_total.X
     
     
-def _maximise_edge_normal(conf: config.Config, a: float, b: float, c: float, pq_flex_points: list[float]):
+def _maximise_edge_normal(conf: config.Config, a: float, b: float, c: float, pq_flex_points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """This recursive function calculates new points in the (P_flex,Q_flex) space by optimizing in the edge normal-direction defined by a,b. For every point that increases the convex hull area by more than eta, it iterates again in the two directions adjacent to the new point, until convergence."""
     print(f"New minimization objective: -{a}*P_flex - {b}*Q_flex") # TODO: check signs (maybe revert to -a and -b)
     # minimize in direction -a,-b and get new optimal p,q point
