@@ -30,10 +30,10 @@ def main():
     
     # run each scenario in conf_list
     for conf in conf_list:
-        _run_analyis(conf=conf())
+        _run_analysis(conf=conf())
 
     
-def _run_analyis(conf: config.Config):
+def _run_analysis(conf: config.Config):
     """This function orchestrates the optimization of the FFOR for a single configuration conf."""
     
     # run optimizations for initial directions of a,b
@@ -122,14 +122,13 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             hp = p_hp.get((i, tcol), None)
             bp = p_bess_pos.get((i, tcol), None)
             bn = p_bess_neg.get((i, tcol), None)
+            ev = p_ev.get((i, tcol), None)
 
             if pv is not None: expr_P += pv          # base + p_pv_flex
             if hp is not None: expr_P += hp          # base + p_hp_flex (<=0)
             if bp is not None: expr_P += bp          # charging (>=0, withdrawal)
             if bn is not None: expr_P += bn          # discharging (<=0, injection)
-
-            ev = p_ev.get((i, tcol), None)
-            if ev is not None: expr_P -= ev          # EV charging (positive profile → subtract = withdrawal)
+            if ev is not None: expr_P += ev          # EV charging (positive profile → subtract = withdrawal)
 
             # --- Reactive power (kVAr) ---
             expr_Q = gp.LinExpr(0.0)
@@ -141,6 +140,10 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             if qpv is not None: expr_Q += qpv
             if qhp is not None: expr_Q += qhp
             if qbe is not None: expr_Q += qbe
+            
+            # TODO: simpler:
+            #expr_P = conf.p_load[i, tcol] + p_pv.get((i, tcol), 0) + p_hp.get((i, tcol), 0) + p_bess_pos.get((i, tcol), 0) + p_bess_neg.get((i, tcol), 0) + p_ev.get((i, tcol), 0)
+            #expr_Q = q_pv.get((i, tcol), 0) + q_hp.get((i, tcol), 0) + q_bess.get((i, tcol), 0)
 
             # Scale to p.u.
             P_inj_expr[(i, idx_t)] = (1.0 / Sbase_kW) * expr_P # TODO pu base not clear of kW or MW
@@ -158,39 +161,39 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     root = ldf_data["root"]
     children_root = ldf_data["incidence_out"][root]
 
-    # TODO: correct this (make it independent of time)
-    # Total flex per time: sum of all device flex variables (kW, kVAr)
-    # same quantities as in the dummy, but now constrained by the grid.
-    p_flex_total = model.addVars(range(T), lb=-GRB.INFINITY, name="p_flex_total")
-    q_flex_total = model.addVars(range(T), lb=-GRB.INFINITY, name="q_flex_total")
+    # Total flexibility variables
+    p_flex_total = model.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY, name="p_flex_total")
+    q_flex_total = model.addVar(lb=-GRB.INFINITY, ub=GRB.INFINITY, name="q_flex_total")
 
-    for idx_t, tcol in enumerate(conf.time_index_list):
+    for t in conf.time_index_list:
         model.addConstr(
-            p_flex_total[idx_t]
-            == gp.quicksum(p_pv_flex[n, tcol]  for n in conf.node_group_dict["PV"])
-            +  gp.quicksum(p_hp_flex[n, tcol]  for n in conf.node_group_dict["HP"])
-            +  gp.quicksum(p_bess_flex[n, tcol] for n in conf.node_group_dict["BESS"])
-            -  gp.quicksum(p_ev_flex[n, tcol]   for n in conf.node_group_dict["EV"]),
-            name=f"p_flex_total[{idx_t}]"
+            p_flex_total
+            == gp.quicksum(
+                p_pv_flex.get((n, t), 0)
+                + p_hp_flex.get((n, t), 0)
+                + p_bess_flex.get((n, t), 0)
+                + p_ev_flex.get((n,t), 0)
+                for n in conf.node_group_dict["ALL NODES"]
+            ),
+            name=f"p_flex_total[{t}]"
         )
         model.addConstr(
-            q_flex_total[idx_t]
-            == gp.quicksum(q_pv_flex[n, tcol]  for n in conf.node_group_dict["PV"])
-            +  gp.quicksum(q_hp_flex[n, tcol]  for n in conf.node_group_dict["HP"])
-            +  gp.quicksum(q_bess_flex[n, tcol] for n in conf.node_group_dict["BESS"]),
-            name=f"q_flex_total[{idx_t}]"
+            q_flex_total
+            == gp.quicksum(
+                q_pv_flex.get((n, t), 0)
+                + q_hp_flex.get((n, t), 0)
+                + q_bess_flex.get((n, t), 0)
+                for n in conf.node_group_dict["ALL NODES"]),
+            name=f"q_flex_total[{t}]"
         )
-
-    alpha = 1.0   # weight on active flex
-    beta  = 1.0   # weight on reactive flex
 
     # Maximize total flexibility (minimize negative flex)
     # Scale to p.u. to keep objective dimensionally consistent with grid vars
     model.setObjective(
-        -alpha * gp.quicksum(p_flex_total[tt] for tt in range(T)) / Sbase_kW
-        - beta  * gp.quicksum(q_flex_total[tt] for tt in range(T)) / Sbase_kW,
+        -a * p_flex_total / Sbase_kW
+        -b * q_flex_total / Sbase_kW,
         GRB.MINIMIZE
-    ) # TODO: maximize a constant p_flex, q_flex, not a sum over time
+    )
 
     # 7) Solve
     model.Params.OutputFlag = 1
@@ -205,8 +208,8 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         print("\n  t  | p_flex_total (kW) | q_flex_total (kVAr) | Ppcc (kW)  | Qpcc (kVAr)")
         print("  " + "-"*75)
         for idx_t in range(T):
-            pft = p_flex_total[idx_t].X
-            qft = q_flex_total[idx_t].X
+            pft = p_flex_total.X
+            qft = q_flex_total.X
             ppcc = sum(Pf[root, j, idx_t].X for j in children_root) * Sbase_kW
             qpcc = sum(Qf[root, j, idx_t].X for j in children_root) * Sbase_kW
             print(f"  {conf.time_index_list[idx_t]:2d} | {pft:17.2f} | {qft:19.2f} | {ppcc:10.2f} | {qpcc:10.2f}")
@@ -247,19 +250,28 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         "q_bess_flex": q_bess_flex,
         "soc_bess": soc_bess,
         "b_bess_charge": b_bess_charge,
-        #"Voltage": V,
         "p_ev": p_ev,
         "p_ev_flex": p_ev_flex,
+        "Voltage": V,
+    }
+    results_edge_t_dict = {
+        "P_edge": Pf, # TODO: currently false time indexes for export. adapt to conf.time_index_list in var definition
+        "Q_edge": Qf,
     }
 
     # extract and save nodal results to longtable
     df = pd.concat([funcs._extract_nodal_results_to_df(conf, var, varname) for varname, var in results_n_t_dict.items()])
-    df.to_csv(f"{conf.output_folder}/results_n_t_a{a}_b{b}.csv", index=False)
+    df.to_csv(f"{conf.output_folder}/results_node_t_a{a}_b{b}.csv", index=False)
+
+    # extract and save edge results to longtable
+    df = pd.concat([funcs._extract_edge_results_to_df(conf, var, varname) for varname, var in results_edge_t_dict.items()])
+    df.to_csv(f"{conf.output_folder}/results_edge_t_a{a}_b{b}.csv", index=False)
+
+
+    return p_flex_total.X, q_flex_total.X
     
-    return p_flex_total[0].X, q_flex_total[0].X # TODO: correct this
     
-    
-def _maximise_edge_normal(conf: config.Config, a: float, b: float, c: float, pq_flex_points: list[float]):
+def _maximise_edge_normal(conf: config.Config, a: float, b: float, c: float, pq_flex_points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """This recursive function calculates new points in the (P_flex,Q_flex) space by optimizing in the edge normal-direction defined by a,b. For every point that increases the convex hull area by more than eta, it iterates again in the two directions adjacent to the new point, until convergence."""
     print(f"New minimization objective: -{a}*P_flex - {b}*Q_flex") # TODO: check signs (maybe revert to -a and -b)
     # minimize in direction -a,-b and get new optimal p,q point

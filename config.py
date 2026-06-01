@@ -9,8 +9,6 @@ import datetime as dt
 # TODO: profiles to p.u.? -> check units!
 # TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
 
-# TODO: check or precompute ub & lb
-# TODO: store edge data (P, Q)
 # TODO: config input checks
 
 class Config:
@@ -43,7 +41,7 @@ class Config:
             "Ev_lb": "ev_7kw/ev_lowerbound.csv",
             "Ev_ub": "ev_7kw/ev_baseload.csv",
             "t_outdoor": "temperature_profiles.csv"
-        } # TODO: preprocess these files; finish implementation
+        }
     } # contains the filenames of the input files for each type of data
 
     # optimization parameters
@@ -75,7 +73,7 @@ class Config:
     # --------- Derived parameters and data structures (calculated in __init__) --------- #
     # directories
     analysis_folder: str  # folder with the input data
-    output_folder: str  # folder where outputs are storedanalysis_year: int = 2050  # year of the scenario (subfolder of base_folder)
+    output_folder: str  # folder where outputs are stored
     
     analysis_year: int  # year of the scenario and subfolder of base_folder
 
@@ -174,10 +172,11 @@ class Config:
         self.q_pv_base = np.zeros_like(self.p_load) # assumed to be zero
         
         # HP
-        self.t_outdoor = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
         self.t_hp_ub = self.hp_ub_temp * np.ones_like(self.p_load)
         self.t_hp_base = self.hp_base_temp * np.ones_like(self.p_load)
         self.t_hp_lb = self.hp_lb_temp * np.ones_like(self.p_load)
+        t_outdoor_raw = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
+        self.t_outdoor = np.minimum(t_outdoor_raw, self.hp_lb_temp) # make sure that t_outdoor is always smaller than hp_lb_temp to avoid negative delta_t and thus negative p_hp_base
         self.cop_hp, self.p_hp_base = self._calculate_hp_cop_and_p(node_metadata_df=self.node_metadata_df, hp_output_temp=self.hp_output_temp, t_outdoor=self.t_outdoor, t_hp_base=self.t_hp_base)
         self.q_hp_base = self.p_hp_base * self.hp_q_p_ratio
         
@@ -189,9 +188,9 @@ class Config:
         self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
         
         # EV
-        self.p_ev_lb = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_lb"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
-        self.p_ev_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
-        self.p_ev_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_ev_lb = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_lb"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_ev_base = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_ev_ub = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         
         # Some data checks
         self._post_init_checks()
@@ -206,8 +205,8 @@ class Config:
         bess_discharging_efficiency = node_metadata_df["BESS_Discharging_efficiency"].to_numpy()[:, np.newaxis]
         
         # calculate p_bess_base_neg and p_bess_base_pos
-        p_bess_base_neg = np.minimum(0, (soc_bess_base_prev - soc_bess_base) * bess_capacity / bess_charging_efficiency) # charging of battery, only negative values # TODO: implement delta_t?
-        p_bess_base_pos = np.maximum(0, (soc_bess_base_prev - soc_bess_base) * bess_capacity * bess_discharging_efficiency) # discharging of battery, only positive values # TODO: implement delta_t?
+        p_bess_base_neg = np.minimum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity / bess_charging_efficiency) # charging of battery, only negative values
+        p_bess_base_pos = np.maximum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity * bess_discharging_efficiency) # discharging of battery, only positive values
 
         return p_bess_base_neg, p_bess_base_pos
 
@@ -218,16 +217,16 @@ class Config:
         cop_0 = node_metadata_df["HP_COP_0"].to_numpy()[:, np.newaxis]
         cop_1 = node_metadata_df["HP_COP_1"].to_numpy()
         cop_2 = node_metadata_df["HP_COP_2"].to_numpy()
-        delta_t = hp_output_temp - t_outdoor
+        delta_temp = hp_output_temp - t_outdoor
         
-        cop_hp = cop_0 + np.outer(cop_1, delta_t) + np.outer(cop_2, delta_t**2) # COP = COP_0 + COP_1*(T_output - T_outdoor) + COP_2*(T_output - T_outdoor)^2
+        cop_hp = cop_0 + np.outer(cop_1, delta_temp) + np.outer(cop_2, delta_temp**2) # COP = COP_0 + COP_1*(T_output - T_outdoor) + COP_2*(T_output - T_outdoor)^2
         
         # calculate p_hp_base
         capacity_kwh_K = node_metadata_df["HP_Thermal_capacitance_KWh/K"].to_numpy()[:, np.newaxis]
         conductivity_kw_K = node_metadata_df["HP_Thermal_conductivity_kW/K"].to_numpy()[:, np.newaxis]
         t_hp_base_prev = np.roll(t_hp_base, shift=1, axis=1)
         
-        p_hp_base = np.divide(-(capacity_kwh_K * (t_hp_base - t_hp_base_prev) + conductivity_kw_K * (t_hp_base - t_outdoor)), cop_hp) # cop_hp * p_hp_base = -capacity_kwh_K * (t_hp_base - t_hp_base_prev) - conductivity_kw_K * (t_hp_base - t_outdoor)
+        p_hp_base = np.divide(-(capacity_kwh_K / self.delta_t * (t_hp_base - t_hp_base_prev) + conductivity_kw_K * (t_hp_base - t_outdoor)), cop_hp) # cop_hp * p_hp_base = -capacity_kwh_K / delta_t * (t_hp_base - t_hp_base_prev) - conductivity_kw_K * (t_hp_base - t_outdoor)
         
         return cop_hp, p_hp_base
         
@@ -260,6 +259,7 @@ class Config:
         # filter columns of the analysis day
         time_column_list = [col for col in loadprofile_df.columns if col.startswith(analysis_day)]
         print("WARNING: No time columns found for the analysis_date_mm_dd. Check input!") if len(time_column_list) == 0 else None
+        assert len(time_column_list) == 24, f"Expected 24 time columns for the analysis day {analysis_day}, but found {len(time_column_list)}. Check input and column filtering logic."
         np_array = loadprofile_df.loc[:, time_column_list].to_numpy()
 
         return np.hstack([np_array, np_array]) # copy the profiles to the next day, to enable periods that cross midnight
@@ -385,15 +385,33 @@ class Config:
         shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
         
         # TODO: implement data inputchecks
-        assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
-        
+        # q_base
         assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
         assert (self.q_bess_base == np.zeros_like(self.p_load)).all(), "q_bess_base is assumed to be zero, check input"
         
+        # p_bess_base pos and neg
         assert np.logical_or(self.p_bess_base_neg <= 0, np.isnan(self.p_bess_base_neg)).all(), "p_bess_base_neg is assumed to be negative (charging), check input"
         assert np.logical_or(self.p_bess_base_pos >= 0, np.isnan(self.p_bess_base_pos)).all(), "p_bess_base_pos is assumed to be positive (discharging), check input"
         
-        assert 0 <= self.bess_soc_lb < self.bess_soc_base < self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
-        assert 17 <= self.hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
-    
+        # soc and hp: lb, base, ub
+        assert 0 <= self.bess_soc_lb <= self.bess_soc_base <= self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
+        assert 17 <= self.hp_lb_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
+        
+        assert np.logical_and(self.p_ev_ub <= self.p_ev_base, self.p_ev_base <= self.p_ev_lb, self.p_ev_lb <= 0).all(), "p_ev must be negative"
+        
+        # t_outdoor
+        assert self.t_outdoor.max() <= self.hp_lb_temp, "Check that the outdoor temperature profile is always smaller than the HP lower bound temperature to avoid negative delta_t and thus negative p_hp_base"
+        assert np.logical_or(self.p_hp_base <= 0, np.isnan(self.p_hp_base)).all(), "Check that the HP power profile is always negative (consumption) to avoid issues with the optimization and interpretation of results"
+        assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
+        
+        # time parameters
+        assert 1 <= self.analysis_n_timesteps <= 24, "Check that analysis_n_timesteps is between 1 and 24, otherwise the time indexing and profiles need to be adapted"
+        assert isinstance(self.analysis_n_timesteps, int), "Check that analysis_n_timesteps is an integer number of hours, otherwise the time indexing and profiles need to be adapted"
+        assert 0 < self.delta_t <= 1, "Check that delta_t is positive and less than or equal to 1, otherwise the time indexing and profiles need to be adapted"
+        assert (self.analysis_n_timesteps == 1) or (self.delta_t == 1.0), "Check that if analysis_n_timesteps is not 1, then delta_t is 1, otherwise the time indexing and profiles need to be adapted"
+        assert 0 <= self.analysis_start_hour <= 23, "Check that analysis_start_hour is between 0 and 23, otherwise the time indexing and profiles need to be adapted"
+        assert isinstance(self.analysis_start_hour, int), "Check that analysis_start_hour is an integer number of hours, otherwise the time indexing and profiles need to be adapted"
+        assert 1 <= self.analysis_day <= 31, "Check that analysis_day is between 1 and 31, otherwise the time indexing and profiles need to be adapted"
+        assert 1 <= self.analysis_month <= 12, "Check that analysis_month is between 1 and 12, otherwise the time indexing and profiles need to be adapted"
+        assert self.analysis_year in [2030, 2040, 2050], "Check that analysis_year is one of the years for which we have data (2030, 2040, 2050), otherwise the time indexing and profiles need to be adapted"
     
