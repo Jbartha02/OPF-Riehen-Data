@@ -83,7 +83,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     p_pv, p_pv_flex, q_pv, q_pv_flex = funcs.define_pv_vars_and_bcs(model, conf)
     p_hp, p_hp_flex, q_hp, q_hp_flex, t_hp = funcs.define_hp_vars_and_bcs(model, conf)
     p_bess_pos, p_bess_neg, p_bess_flex, q_bess, q_bess_flex, soc_bess, b_bess_charge = funcs.define_bess_vars_and_bcs(model, conf)
-    # EV: TODO
+    p_ev, p_ev_flex = funcs.define_ev_vars_and_bcs(model, conf)
 
     # 1) Per-unit edges
     edges_df_pu = funcs.per_unit_edges(
@@ -108,7 +108,6 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     ldf_data = funcs.assemble_lindistflow_data(tree, T=T, V_min=0.95, V_max=1.05)
 
     # 4) Nodal injection expressions (p.u.) — base + flex variables
-    # TODO: EV needs to be added
     Sbase_kW = conf.S_base * 1000.0
     P_inj_expr = {}
     Q_inj_expr = {}
@@ -123,11 +122,13 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             hp = p_hp.get((i, tcol), None)
             bp = p_bess_pos.get((i, tcol), None)
             bn = p_bess_neg.get((i, tcol), None)
+            ev = p_ev.get((i, tcol), None)
 
             if pv is not None: expr_P += pv          # base + p_pv_flex
             if hp is not None: expr_P += hp          # base + p_hp_flex (<=0)
             if bp is not None: expr_P += bp          # charging (>=0, withdrawal)
             if bn is not None: expr_P += bn          # discharging (<=0, injection)
+            if ev is not None: expr_P += ev          # EV charging (positive profile → subtract = withdrawal)
 
             # --- Reactive power (kVAr) ---
             expr_Q = gp.LinExpr(0.0)
@@ -141,7 +142,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             if qbe is not None: expr_Q += qbe
             
             # TODO: simpler:
-            #expr_P = conf.p_load[i, tcol] + p_pv.get((i, tcol), 0) + p_hp.get((i, tcol), 0) + p_bess_pos.get((i, tcol), 0) + p_bess_neg.get((i, tcol), 0)
+            #expr_P = conf.p_load[i, tcol] + p_pv.get((i, tcol), 0) + p_hp.get((i, tcol), 0) + p_bess_pos.get((i, tcol), 0) + p_bess_neg.get((i, tcol), 0) + p_ev.get((i, tcol), 0)
             #expr_Q = q_pv.get((i, tcol), 0) + q_hp.get((i, tcol), 0) + q_bess.get((i, tcol), 0)
 
             # Scale to p.u.
@@ -171,6 +172,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
                 p_pv_flex.get((n, t), 0)
                 + p_hp_flex.get((n, t), 0)
                 + p_bess_flex.get((n, t), 0)
+                + p_ev_flex.get((n,t), 0)
                 for n in conf.node_group_dict["ALL NODES"]
             ),
             name=f"p_flex_total[{t}]"
@@ -248,11 +250,12 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         "q_bess_flex": q_bess_flex,
         "soc_bess": soc_bess,
         "b_bess_charge": b_bess_charge,
+        "p_ev": p_ev,
+        "p_ev_flex": p_ev_flex,
         "Voltage": V,
-        # TODO: add EV variables
     }
     results_edge_t_dict = {
-        "P_edge": Pf,
+        "P_edge": Pf, # TODO: currently false time indexes for export. adapt to conf.time_index_list in var definition
         "Q_edge": Qf,
     }
 

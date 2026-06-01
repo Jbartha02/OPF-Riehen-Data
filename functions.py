@@ -171,6 +171,36 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
                 
     return p_bess_pos, p_bess_neg, p_bess_flex, q_bess, q_bess_flex, soc_bess, b_bess_charge
 
+def define_ev_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tupledict, gp.tupledict]:
+    """Define all ev variables and their relationships (bounds and balance constraints) in the optimization model."""
+    nodes = conf.node_group_dict["EV"]
+    times = conf.time_index_list
+    
+    # bound helper variables (ATTENTION with the signs)
+    p_ev_lb = np.nanmin(conf.p_ev_ub)  # NOTE: conf.p_ev_ub is smaller (more negative) than conf.p_ev_lb!
+    p_ev_ub = np.nanmax(conf.p_ev_lb)
+    p_ev_flex_lb = np.nanmin(conf.p_ev_ub - conf.p_ev_base) # this is smaller than 0
+    p_ev_flex_ub = np.nanmax(conf.p_ev_lb - conf.p_ev_base) # this is larger than 0
+    
+    # Initialize variables
+    p_ev = model.addVars(nodes, times, lb=p_ev_lb, ub=p_ev_ub, vtype=GRB.CONTINUOUS, name="p_ev")
+    p_ev_flex = model.addVars(nodes, times, lb=p_ev_flex_lb, ub=p_ev_flex_ub, vtype=GRB.CONTINUOUS, name="p_ev_flex")
+
+    for node in nodes:
+        for t in times:
+            model.addConstr(
+                p_ev[node, t] == conf.p_ev_base[node, t] + p_ev_flex[node, t],
+                name=f"ev_balance_n{node}_t{t}",
+            )
+            model.addConstr(
+                p_ev[node, t] <= conf.p_ev_lb[node, t], name=f"ev_lb_n{node}_t{t}" # NOTE: <= sign is flipped, because values are negative!
+            )
+            model.addConstr(
+                p_ev[node, t] >= conf.p_ev_ub[node, t], name=f"ev_ub_n{node}_t{t}" # NOTE: >= sign is flipped, because values are negative!
+            )
+    return p_ev, p_ev_flex
+
+
 def per_unit_edges(edges_df: pd.DataFrame, V_base_kV: float, S_base_MVA: float) -> pd.DataFrame:
     """
     Convert line parameters to per-unit based on V_base (kV, line-to-line) and S_base (MVA):
@@ -211,6 +241,7 @@ def per_unit_edges(edges_df: pd.DataFrame, V_base_kV: float, S_base_MVA: float) 
         if (out['s_nom_pu'] <= 0).any():
             print("WARNING: negative s_nom_pu")
     return out
+
 
 def build_radial_tree_from_edges(
     n_nodes: int,
