@@ -201,8 +201,8 @@ class Config:
         bess_discharging_efficiency = node_metadata_df["BESS_Discharging_efficiency"].to_numpy()[:, np.newaxis]
         
         # calculate p_bess_base_neg and p_bess_base_pos
-        p_bess_base_neg = np.minimum(0, (soc_bess_base_prev - soc_bess_base) * bess_capacity / bess_charging_efficiency) # charging of battery, only negative values # TODO: implement delta_t?
-        p_bess_base_pos = np.maximum(0, (soc_bess_base_prev - soc_bess_base) * bess_capacity * bess_discharging_efficiency) # discharging of battery, only positive values # TODO: implement delta_t?
+        p_bess_base_neg = np.minimum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity / bess_charging_efficiency) # charging of battery, only negative values
+        p_bess_base_pos = np.maximum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity * bess_discharging_efficiency) # discharging of battery, only positive values
 
         return p_bess_base_neg, p_bess_base_pos
 
@@ -213,16 +213,16 @@ class Config:
         cop_0 = node_metadata_df["HP_COP_0"].to_numpy()[:, np.newaxis]
         cop_1 = node_metadata_df["HP_COP_1"].to_numpy()
         cop_2 = node_metadata_df["HP_COP_2"].to_numpy()
-        delta_t = hp_output_temp - t_outdoor
+        delta_temp = hp_output_temp - t_outdoor
         
-        cop_hp = cop_0 + np.outer(cop_1, delta_t) + np.outer(cop_2, delta_t**2) # COP = COP_0 + COP_1*(T_output - T_outdoor) + COP_2*(T_output - T_outdoor)^2
+        cop_hp = cop_0 + np.outer(cop_1, delta_temp) + np.outer(cop_2, delta_temp**2) # COP = COP_0 + COP_1*(T_output - T_outdoor) + COP_2*(T_output - T_outdoor)^2
         
         # calculate p_hp_base
         capacity_kwh_K = node_metadata_df["HP_Thermal_capacitance_KWh/K"].to_numpy()[:, np.newaxis]
         conductivity_kw_K = node_metadata_df["HP_Thermal_conductivity_kW/K"].to_numpy()[:, np.newaxis]
         t_hp_base_prev = np.roll(t_hp_base, shift=1, axis=1)
         
-        p_hp_base = np.divide(-(capacity_kwh_K * (t_hp_base - t_hp_base_prev) + conductivity_kw_K * (t_hp_base - t_outdoor)), cop_hp) # cop_hp * p_hp_base = -capacity_kwh_K * (t_hp_base - t_hp_base_prev) - conductivity_kw_K * (t_hp_base - t_outdoor)
+        p_hp_base = np.divide(-(capacity_kwh_K / self.delta_t * (t_hp_base - t_hp_base_prev) + conductivity_kw_K * (t_hp_base - t_outdoor)), cop_hp) # cop_hp * p_hp_base = -capacity_kwh_K / delta_t * (t_hp_base - t_hp_base_prev) - conductivity_kw_K * (t_hp_base - t_outdoor)
         
         return cop_hp, p_hp_base
         

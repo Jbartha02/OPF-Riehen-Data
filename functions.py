@@ -54,7 +54,7 @@ def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
             if t == conf.time_index_list[0]:
                 model.addConstr(
                     -p_hp[node, t] * conf.cop_hp[node, t]
-                    == conf.node_metadata_df.loc[node, "HP_Thermal_capacitance_KWh/K"]
+                    == conf.node_metadata_df.loc[node, "HP_Thermal_capacitance_KWh/K"] / conf.delta_t
                     * (t_hp[node, t] - conf.t_hp_base[node, t+23])
                     + conf.node_metadata_df.loc[node, "HP_Thermal_conductivity_kW/K"]
                     * (t_hp[node, t] - conf.t_outdoor[t]),
@@ -63,7 +63,7 @@ def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
             else:
                 model.addConstr(
                     -p_hp[node, t] * conf.cop_hp[node, t]
-                    == conf.node_metadata_df.loc[node, "HP_Thermal_capacitance_KWh/K"]
+                    == conf.node_metadata_df.loc[node, "HP_Thermal_capacitance_KWh/K"] / conf.delta_t
                     * (t_hp[node, t] - t_hp[node, t-1])
                     + conf.node_metadata_df.loc[node, "HP_Thermal_conductivity_kW/K"]
                     * (t_hp[node, t] - conf.t_outdoor[t]),
@@ -105,16 +105,18 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
     b_bess_charge = model.addVars(conf.node_group_dict["BESS"], conf.time_index_list, vtype=GRB.BINARY, name="b_bess_charge")
     
     # Define constraints
-    for node in conf.node_group_dict["BESS"]:
-        for t in conf.time_index_list:
-            if t == conf.time_index_list[0]:
+        eta_ch = conf.node_metadata_df.loc[node, "BESS_Charging_efficiency"]
+        eta_disch = conf.node_metadata_df.loc[node, "BESS_Discharging_efficiency"]
+        capacity_kWh = conf.node_metadata_df.loc[node, "BESS_Battery_capacity_kWh"]
+        power_kVA = conf.node_metadata_df.loc[node, "BESS_Nominal_power_kW"]
+        for t in times:
                 model.addConstr(
-                    soc_bess[node, t] == conf.soc_bess_base[node, t+23] - (conf.p_bess_base_pos[node, t+23] * conf.node_metadata_df.loc[node, "BESS_Charging_efficiency"] + conf.p_bess_base_neg[node, t-1] / conf.node_metadata_df.loc[node, "BESS_Discharging_efficiency"]) / conf.node_metadata_df.loc[node, "BESS_Battery_capacity_kWh"], # TODO: implement delta_t?
+                    soc_bess[node, t] == conf.soc_bess_base[node, t+23] - conf.delta_t / capacity_kWh * (conf.p_bess_base_pos[node, t+23] * eta_ch + conf.p_bess_base_neg[node, t-1] / eta_disch), # TODO: implement delta_t?
                     name=f"soc_bess_balance_n{node}_t{t}",
                 )
             else:
                 model.addConstr(
-                    soc_bess[node, t] == soc_bess[node, t-1] - (p_bess_pos[node, t-1] * conf.node_metadata_df.loc[node, "BESS_Charging_efficiency"] + p_bess_neg[node, t-1] / conf.node_metadata_df.loc[node, "BESS_Discharging_efficiency"]) / conf.node_metadata_df.loc[node, "BESS_Battery_capacity_kWh"], # TODO: implement delta_t?
+                    soc_bess[node, t] == soc_bess[node, t-1] - conf.delta_t / capacity_kWh * (p_bess_pos[node, t-1] * eta_ch + p_bess_neg[node, t-1] / eta_disch), # TODO: implement delta_t?
                     name=f"soc_bess_balance_n{node}_t{t}",
                 )
             model.addConstr(
@@ -322,7 +324,7 @@ def add_lindistflow_to_model(
     inc_in = data["incidence_in"]
     inc_out = data["incidence_out"]
 
-    # Variables
+    # Variables # TODO: use conf.time_index_list for unique naming of time indices
     V = model.addVars(nodes, data["T"], name="V", lb=V_min, ub=V_max)
     P = model.addVars(edges, data["T"], name="P", lb=-GRB.INFINITY, ub=GRB.INFINITY)
     Q = model.addVars(edges, data["T"], name="Q", lb=-GRB.INFINITY, ub=GRB.INFINITY)
