@@ -255,6 +255,7 @@ class Config:
         # filter columns of the analysis day
         time_column_list = [col for col in loadprofile_df.columns if col.startswith(analysis_day)]
         print("WARNING: No time columns found for the analysis_date_mm_dd. Check input!") if len(time_column_list) == 0 else None
+        assert len(time_column_list) == 24, f"Expected 24 time columns for the analysis day {analysis_day}, but found {len(time_column_list)}. Check input and column filtering logic."
         np_array = loadprofile_df.loc[:, time_column_list].to_numpy()
 
         return np.hstack([np_array, np_array]) # copy the profiles to the next day, to enable periods that cross midnight
@@ -379,17 +380,31 @@ class Config:
         shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
         
         # TODO: implement data inputchecks
-        assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
-        
+        # q_base
         assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
         assert (self.q_bess_base == np.zeros_like(self.p_load)).all(), "q_bess_base is assumed to be zero, check input"
         
+        # p_bess_base pos and neg
         assert np.logical_or(self.p_bess_base_neg <= 0, np.isnan(self.p_bess_base_neg)).all(), "p_bess_base_neg is assumed to be negative (charging), check input"
         assert np.logical_or(self.p_bess_base_pos >= 0, np.isnan(self.p_bess_base_pos)).all(), "p_bess_base_pos is assumed to be positive (discharging), check input"
+        
+        # soc and hp: lb, base, ub
+        assert 0 <= self.bess_soc_lb <= self.bess_soc_base <= self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
+        assert 17 <= self.hp_lb_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
         
         # t_outdoor
         assert self.t_outdoor.max() <= self.hp_lb_temp, "Check that the outdoor temperature profile is always smaller than the HP lower bound temperature to avoid negative delta_t and thus negative p_hp_base"
         assert np.logical_or(self.p_hp_base <= 0, np.isnan(self.p_hp_base)).all(), "Check that the HP power profile is always negative (consumption) to avoid issues with the optimization and interpretation of results"
         assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
         
+        # time parameters
+        assert 1 <= self.analysis_n_timesteps <= 24, "Check that analysis_n_timesteps is between 1 and 24, otherwise the time indexing and profiles need to be adapted"
+        assert isinstance(self.analysis_n_timesteps, int), "Check that analysis_n_timesteps is an integer number of hours, otherwise the time indexing and profiles need to be adapted"
+        assert 0 < self.delta_t <= 1, "Check that delta_t is positive and less than or equal to 1, otherwise the time indexing and profiles need to be adapted"
+        assert (self.analysis_n_timesteps == 1) or (self.delta_t == 1.0), "Check that if analysis_n_timesteps is not 1, then delta_t is 1, otherwise the time indexing and profiles need to be adapted"
+        assert 0 <= self.analysis_start_hour <= 23, "Check that analysis_start_hour is between 0 and 23, otherwise the time indexing and profiles need to be adapted"
+        assert isinstance(self.analysis_start_hour, int), "Check that analysis_start_hour is an integer number of hours, otherwise the time indexing and profiles need to be adapted"
+        assert 1 <= self.analysis_day <= 31, "Check that analysis_day is between 1 and 31, otherwise the time indexing and profiles need to be adapted"
+        assert 1 <= self.analysis_month <= 12, "Check that analysis_month is between 1 and 12, otherwise the time indexing and profiles need to be adapted"
+        assert self.analysis_year in [2030, 2040, 2050], "Check that analysis_year is one of the years for which we have data (2030, 2040, 2050), otherwise the time indexing and profiles need to be adapted"
     
