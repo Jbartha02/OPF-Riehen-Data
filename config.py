@@ -10,7 +10,6 @@ import datetime as dt
 # TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
 
 # TODO: check or precompute ub & lb
-# TODO: store p,q
 # TODO: store edge data (P, Q)
 # TODO: config input checks
 
@@ -88,7 +87,7 @@ class Config:
     p_pv_ub: np.ndarray
     p_pv_base: np.ndarray
     p_pv_lb: np.ndarray
-    q_pv_base: np.ndarray # TODO: assumed to be zero -> not necessary
+    q_pv_base: np.ndarray # assumed to be zero
     
     # HP
     t_hp_base: np.ndarray
@@ -105,7 +104,7 @@ class Config:
     soc_bess_ub: np.ndarray
     p_bess_base_neg: np.ndarray
     p_bess_base_pos: np.ndarray
-    q_bess_base: np.ndarray # TODO: assumed to be zero -> not necessary
+    q_bess_base: np.ndarray # assumed to be zero
     bess_power_constraints: pd.DataFrame # df with coefficients a,b,c to create approximation of P^2 + Q^2 <= S^2 with an octagon of 8 linear constraints a*P + b*Q <= c  
     
     # EV
@@ -150,8 +149,8 @@ class Config:
         # PV
         self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
-        self.p_pv_lb = np.zeros_like(self.p_pv_ub)
-        self.q_pv_base = np.zeros_like(self.p_pv_base)
+        self.p_pv_lb = np.zeros_like(self.p_load)
+        self.q_pv_base = np.zeros_like(self.p_load) # assumed to be zero
         
         # HP
         self.t_outdoor = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
@@ -166,7 +165,7 @@ class Config:
         self.soc_bess_base = self.bess_soc_base * np.ones_like(self.p_load)
         self.soc_bess_lb = self.bess_soc_lb * np.ones_like(self.p_load)
         self.p_bess_base_neg, self.p_bess_base_pos = self._calculate_bess_p(node_metadata_df=self.node_metadata_df, soc_bess_base=self.soc_bess_base)
-        self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # TODO: assumed to be zero -> not necessary
+        self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
         
         # TODO: add other profiles
         
@@ -306,5 +305,13 @@ class Config:
         # TODO: implement data inputchecks
         assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
         
+        assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
+        assert (self.q_bess_base == np.zeros_like(self.p_load)).all(), "q_bess_base is assumed to be zero, check input"
+        
+        assert np.logical_or(self.p_bess_base_neg <= 0, np.isnan(self.p_bess_base_neg)).all(), "p_bess_base_neg is assumed to be negative (charging), check input"
+        assert np.logical_or(self.p_bess_base_pos >= 0, np.isnan(self.p_bess_base_pos)).all(), "p_bess_base_pos is assumed to be positive (discharging), check input"
+        
+        assert 0 <= self.bess_soc_lb < self.bess_soc_base < self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
+        assert 17 <= self.hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
     
     
