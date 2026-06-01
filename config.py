@@ -33,11 +33,15 @@ class Config:
             "BESS": "bess_allocation.csv",
             "PV": "pv_p_installed.csv",
             "HP": "hp_allocation.csv",
+            "EV": "ev_alternativ/ev_allocation.csv"
         },
         "loadprofiles": {
             "load": "load_profiles.csv",
             "PV_ub": "pv_generation.csv",
             "PV_base": "pv_generation.csv",
+            "Ev_base": "ev_7kw/ev_baseload.csv",
+            "Ev_lb": "ev_7kw/ev_lowerbound.csv",
+            "Ev_ub": "ev_7kw/ev_baseload.csv",
             "t_outdoor": "temperature_profiles.csv"
         } # TODO: preprocess these files; finish implementation
     } # contains the filenames of the input files for each type of data
@@ -184,8 +188,10 @@ class Config:
         self.p_bess_base_neg, self.p_bess_base_pos = self._calculate_bess_p(node_metadata_df=self.node_metadata_df, soc_bess_base=self.soc_bess_base)
         self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
         
-        # TODO: add other profiles
-        
+        # EV
+        self.p_ev_lb = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_lb"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_ev_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_ev_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         
         # Some data checks
         self._post_init_checks()
@@ -274,7 +280,8 @@ class Config:
                     if column_name not in ["LV_grid", "LV_osmid"]
                 }
             )
-            node_metadata_df[tech] = True # add a column to indicate that these nodes have this technology
+            share_col = next((c for c in node_metadata_df.columns if c.startswith(f"{tech}_") and c.endswith("_share")), None)
+            node_metadata_df[tech] = (node_metadata_df[share_col] > 0) if share_col else True
             all_nodes_df = all_nodes_df.merge(node_metadata_df, on=["LV_grid", "LV_osmid"], how="left")
         
         return all_nodes_df.sort_values(["LV_grid", "LV_osmid"]).reset_index(drop=True) # order the nodes by LV grid and OSM ID
