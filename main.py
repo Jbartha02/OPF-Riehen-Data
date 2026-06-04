@@ -113,7 +113,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     Q_inj_expr = {}
 
     for i in conf.node_metadata_df.index:
-        for tcol in enumerate(conf.time_index_list):
+        for idx_t, tcol in enumerate(conf.time_index_list):
 
             # --- Active power (kW) ---
             expr_P = gp.LinExpr(float(conf.p_load[i, tcol]))   # fixed load (negative)
