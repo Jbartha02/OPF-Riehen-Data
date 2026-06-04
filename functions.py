@@ -359,9 +359,8 @@ def add_lindistflow_to_model(model: gp.Model,data: Dict[str, Any],P_inj: Dict[Tu
 
     Returns (V, P, Q) variable dicts.
     """
-    N = data["N"]
-    Tn = data["T"]
     root = data["root"]
+    times = config.time_index_list
     nodes: List[int] = data["nodes"]
     edges: List[Tuple[int,int]] = data["edges"]
     r = data["r"]
@@ -372,20 +371,20 @@ def add_lindistflow_to_model(model: gp.Model,data: Dict[str, Any],P_inj: Dict[Tu
     inc_in = data["incidence_in"]
     inc_out = data["incidence_out"]
 
-    # Variables # TODO: use conf.time_index_list for unique naming of time indices
-    V = model.addVars(nodes, data["T"], name="V", lb=V_min, ub=V_max)
-    P = model.addVars(edges, data["T"], name="P", lb=-GRB.INFINITY, ub=GRB.INFINITY)
-    Q = model.addVars(edges, data["T"], name="Q", lb=-GRB.INFINITY, ub=GRB.INFINITY)
+    # Variables
+    V = model.addVars(nodes, times, name="V", lb=V_min, ub=V_max)
+    P = model.addVars(edges, times, name="P", lb=-GRB.INFINITY, ub=GRB.INFINITY)
+    Q = model.addVars(edges, times, name="Q", lb=-GRB.INFINITY, ub=GRB.INFINITY)
 
     # Fix root voltage if desired
     if fix_root_voltage is not None:
-        for t in range(Tn):
+        for t in times:
             model.addConstr(V[root, t] == float(fix_root_voltage), name=f"V_root[{t}]")
 
     # Voltage drop along edges
     for (i, j) in edges:
         rij, xij = r[(i, j)], x[(i, j)]
-        for t in range(Tn):
+        for t in times:
             model.addConstr(
                 V[j, t] == V[i, t] - (rij * P[i, j, t] + xij * Q[i, j, t]),
                 name=f"volt_drop[{i},{j},{t}]"
@@ -396,7 +395,7 @@ def add_lindistflow_to_model(model: gp.Model,data: Dict[str, Any],P_inj: Dict[Tu
         if i != root: # root node has no parent and is not constrained by KCL (slack bus)
             parent_node = inc_in[i]
             childs = inc_out[i]
-            for t in range(Tn):
+            for t in times:
                 # Active
                 expr_in_P = gp.LinExpr(0.0)
                 if parent_node is not None:
@@ -427,7 +426,7 @@ def add_lindistflow_to_model(model: gp.Model,data: Dict[str, Any],P_inj: Dict[Tu
         for (i, j) in edges:
             Smax = smax[(i, j)]
             if np.isfinite(Smax) and Smax > 0:
-                for t in range(Tn):
+                for t in times:
                     for k, theta in enumerate(thetas):
                         model.addConstr(
                             np.cos(theta) * P[i, j, t] + np.sin(theta) * Q[i, j, t] <= Smax,

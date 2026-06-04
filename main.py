@@ -113,7 +113,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     Q_inj_expr = {}
 
     for i in conf.node_metadata_df.index:
-        for idx_t, tcol in enumerate(conf.time_index_list):
+        for tcol in enumerate(conf.time_index_list):
 
             # --- Active power (kW) ---
             expr_P = gp.LinExpr(float(conf.p_load[i, tcol]))   # fixed load (negative)
@@ -146,8 +146,8 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             #expr_Q = q_pv.get((i, tcol), 0) + q_hp.get((i, tcol), 0) + q_bess.get((i, tcol), 0)
 
             # Scale to p.u.
-            P_inj_expr[(i, idx_t)] = (1.0 / Sbase_kW) * expr_P # TODO pu base not clear of kW or MW
-            Q_inj_expr[(i, idx_t)] = (1.0 / Sbase_kW) * expr_Q
+            P_inj_expr[(i, tcol)] = (1.0 / Sbase_kW) * expr_P # TODO pu base not clear of kW or MW
+            Q_inj_expr[(i, tcol)] = (1.0 / Sbase_kW) * expr_Q
 
     # 5) LinDistFlow grid constraints
     V, Pf, Qf = funcs.add_lindistflow_to_model(
