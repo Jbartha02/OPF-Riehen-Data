@@ -353,14 +353,7 @@ def assemble_lindistflow_data(tree: Dict[str, Any], T: int, V_min: float = 0.95,
         "incidence_out": tree["incidence_out"],
     }
 
-def add_lindistflow_to_model(
-    model: gp.Model,
-    data: Dict[str, Any],
-    P_inj: Dict[Tuple[int,int], float],
-    Q_inj: Dict[Tuple[int,int], float],
-    fix_root_voltage: Optional[float] = 1.0,
-    use_soc_lines: bool = True
-) -> Tuple[gp.tupledict, gp.tupledict, gp.tupledict]:
+def add_lindistflow_to_model(model: gp.Model,data: Dict[str, Any],P_inj: Dict[Tuple[int,int], float],Q_inj: Dict[Tuple[int,int], float],fix_root_voltage: Optional[float] = 1.0,use_soc_lines: bool = True) -> Tuple[gp.tupledict, gp.tupledict, gp.tupledict]:
     """
     Add LinDistFlow variables and constraints to an existing gurobipy model.
 
@@ -414,7 +407,7 @@ def add_lindistflow_to_model(
                 inj_P = P_inj.get((i, t), 0.0)
                 model.addConstr(
                     expr_in_P - expr_out_P + inj_P == 0.0,
-                    name=f"kclP[{i},{t}]"            )
+                    name=f"kclP[{i},{t}]")
 
                 # Reactive
                 expr_in_Q = gp.LinExpr(0.0)
@@ -425,18 +418,20 @@ def add_lindistflow_to_model(
                 inj_Q = Q_inj.get((i, t), 0.0)
                 model.addConstr(
                     expr_in_Q - expr_out_Q + inj_Q == 0.0,
-                    name=f"kclQ[{i},{t}]"            )
+                    name=f"kclQ[{i},{t}]")
 
     # Line S limits
     if use_soc_lines:
+        N_approx = 8
+        thetas = [2 * np.pi * k / N_approx for k in range(N_approx)]
         for (i, j) in edges:
             Smax = smax[(i, j)]
             if np.isfinite(Smax) and Smax > 0:
                 for t in range(Tn):
-                    model.addQConstr(
-                        P[i, j, t] * P[i, j, t] + Q[i, j, t] * Q[i, j, t] <= Smax * Smax, # TODO: linearise
-                        name=f"S_limit[{i},{j},{t}]"
-                    )
+                    for k, theta in enumerate(thetas):
+                        model.addConstr(
+                            np.cos(theta) * P[i, j, t] + np.sin(theta) * Q[i, j, t] <= Smax,
+                            name=f"S_limit[{i},{j},{t},k{k}]")
 
     return V, P, Q
 
