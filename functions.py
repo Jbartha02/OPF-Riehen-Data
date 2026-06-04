@@ -421,16 +421,21 @@ def add_lindistflow_to_model(model: gp.Model, time_index_list, data: Dict[str, A
 
     # Line S limits
     if use_soc_lines:
-        N_approx = 8
-        thetas = [2 * np.pi * k / N_approx for k in range(N_approx)]
+        octagon = [
+            (1,  np.sqrt(2)-1), (1, -(np.sqrt(2)-1)),
+            (-1, np.sqrt(2)-1), (-1, -(np.sqrt(2)-1)),
+            (np.sqrt(2)-1,  1), (-(np.sqrt(2)-1),  1),
+            (np.sqrt(2)-1, -1), (-(np.sqrt(2)-1), -1),
+        ]
         for (i, j) in edges:
             Smax = smax[(i, j)]
             if np.isfinite(Smax) and Smax > 0:
                 for t in times:
-                    for k, theta in enumerate(thetas):
+                    for k, (a, b) in enumerate(octagon):
                         model.addConstr(
-                            np.cos(theta) * P[i, j, t] + np.sin(theta) * Q[i, j, t] <= Smax,
-                            name=f"S_limit[{i},{j},{t},k{k}]")
+                            a * P[i, j, t] + b * Q[i, j, t] <= Smax,
+                            name=f"S_limit[{i},{j},{t},k{k}]"
+                        )
 
     return V, P, Q
 
