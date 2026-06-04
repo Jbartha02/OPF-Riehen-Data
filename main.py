@@ -151,7 +151,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
 
     # 5) LinDistFlow grid constraints
     V, Pf, Qf = funcs.add_lindistflow_to_model(
-        model, ldf_data, P_inj_expr, Q_inj_expr,
+        model, conf.time_index_list, ldf_data, P_inj_expr, Q_inj_expr,
         fix_root_voltage=1.0,
         use_soc_lines=True
     )

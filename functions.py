@@ -353,14 +353,14 @@ def assemble_lindistflow_data(tree: Dict[str, Any], T: int, V_min: float = 0.95,
         "incidence_out": tree["incidence_out"],
     }
 
-def add_lindistflow_to_model(model: gp.Model,data: Dict[str, Any],P_inj: Dict[Tuple[int,int], float],Q_inj: Dict[Tuple[int,int], float],fix_root_voltage: Optional[float] = 1.0,use_soc_lines: bool = True) -> Tuple[gp.tupledict, gp.tupledict, gp.tupledict]:
+def add_lindistflow_to_model(model: gp.Model, time_index_list, data: Dict[str, Any], P_inj: Dict[Tuple[int,int], float], Q_inj: Dict[Tuple[int,int], float], fix_root_voltage: Optional[float] = 1.0, use_soc_lines: bool = True) -> Tuple[gp.tupledict, gp.tupledict, gp.tupledict]:
     """
     Add LinDistFlow variables and constraints to an existing gurobipy model.
 
     Returns (V, P, Q) variable dicts.
     """
     root = data["root"]
-    times = config.time_index_list
+    times = time_index_list
     nodes: List[int] = data["nodes"]
     edges: List[Tuple[int,int]] = data["edges"]
     r = data["r"]
