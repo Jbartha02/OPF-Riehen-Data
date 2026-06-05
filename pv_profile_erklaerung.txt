@@ -1,0 +1,52 @@
+ALTERNATIVE PV-PROFILE — ERKLÄRUNG
+====================================
+Erstellt mit: pv_profil.py
+Ausgabe:      <Jahresordner>/pv_sun.csv
+              <Jahresordner>/pv_clouds.csv
+
+
+GRUNDIDEE
+----------
+Das Originaldataset (Walch et al.) liefert pro Repräsentativtag:
+  μ  = mittlere stündliche PV-Erzeugung [kW]     → pv_generation.csv
+  σ  = Standardabweichung davon [kW]              → pv_std.csv
+
+Die Streuung σ entsteht aus echten Messdaten und erfasst die
+natürliche Variabilität zwischen sonnigen und bewölkten Tagen
+innerhalb desselben Monats.
+
+
+FORMEL
+-------
+  Sonnenprofil:   P_sun  = clip( μ + K_SUN  · σ,  0,  P_installed )
+  Regenprofil:    P_rain = clip( μ - K_RAIN · σ,  0,  ∞ )
+
+Das Kappen auf P_installed verhindert, dass das Sonnenprofil die
+physikalische Obergrenze der installierten PV-Leistung überschreitet.
+
+
+EINSTELLUNG DES MULTIPLIKATORS K
+----------------------------------
+K     Interpretation           Statistik
+----  ----------------------   ------------------------------------
+0.5   leicht sonnig / leicht   ~69 % der Tage liegen im Bereich
+      bewölkt                  μ ± 0.5σ
+1.0   sonnig / bewölkt         ~84 % der Tage liegen unter μ + σ
+                               ~16 % der Tage liegen unter μ - σ
+1.5   gut sonnig / trüb        ~93 % liegen unter μ + 1.5σ
+2.0   sehr sonnig /            ~98 % liegen unter μ + 2σ
+      Schlechtwetter           Entspricht Extremtagen
+
+Empfehlung für Sensitivitätsanalysen:
+  K = 1.0  →  Standardszenario
+  K = 2.0  →  Extremszenario (Stressszenario Netz bei Strahlung)
+
+
+WARUM NICHT PERFEKT NORMAL?
+-----------------------------
+PV-Strahlung ist leicht rechtsschief verteilt:
+  - Sehr trübe Tage: wenige kWh (clustern nahe 0)
+  - Strahlungstage: hohe Peaks (selten, aber deutlich über Mittel)
+Für K ≤ 1.5 ist die Normalverteilungsannahme eine gute Näherung.
+Bei K = 2.0 kann das Sonnenprofil die tatsächliche P_installed
+überschreiten — daher wird es auf P_installed gekappt.

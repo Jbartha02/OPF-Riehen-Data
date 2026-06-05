@@ -1,0 +1,63 @@
+ALTERNATIVE BESS-ALLOKATION — ERKLÄRUNG
+========================================
+Erstellt mit: bess_profil.py
+Ausgabe:      <Jahresordner>/bess_alternativ/bess_allocation.csv
+
+
+ORIGINALDATENSATZ (Zapparoli et al., Scientific Data 2025)
+-----------------------------------------------------------
+Quelle:         NREL Annual Technology Baseline 2023 (Residential Battery Storage)
+Speicherdauer:  2.5 h für alle Jahre (2030, 2040, 2050)
+Formel:         Battery_capacity_kWh = Nominal_power_kW × 2.5
+Nominal_power:  = Nennleistung der zugehörigen PV-Anlage (1:1 Ko-Installation)
+
+Kritik: 2.5 h liegt über den meisten heute erhältlichen Heimspeichern
+        und ist für 2030 zu optimistisch.
+
+
+ALTERNATIVE ANNAHMEN (bess_alternativ)
+---------------------------------------
+Jahr    Speicherdauer   Begründung
+----    -------------   ----------
+2030    1.5 h           Orientierung an heute verfügbaren Produkten (BYD-Bereich)
+2040    2.0 h           Moderate Weiterentwicklung, gut belegbar
+2050    2.5 h           Entspricht dem Original — für 2050 realistisch
+
+Formel:         Battery_capacity_kWh = Nominal_power_kW × DURATION_H
+Nominal_power:  UNVERÄNDERT (gleiche Ladeleistung wie Original)
+
+
+REALE SYSTEME — VERGLEICH SPEICHERDAUER
+-----------------------------------------
+
+Produkt                          Kapazität    Ladeleistung    Speicherdauer
+-------                          ---------    ------------    -------------
+Tesla Powerwall 3                13.5 kWh     11.5 kW (AC)    ~1.2 h
+BYD Battery-Box HVS 10.2        10.2 kWh      5.0 kW          ~2.0 h
+BYD Battery-Box HVM 13.8        13.8 kWh      7.5 kW          ~1.8 h
+sonnenBatterie eco 8 (10 kWh)   10.0 kWh      3.3 kW          ~3.0 h
+VARTA element backup (6.5 kWh)   6.5 kWh      3.7 kW          ~1.8 h
+
+Typischer Schweizer Heimspeicher (heute):  5–12 kWh,  1.2–2.0 h
+
+
+EINORDNUNG
+----------
+  2030 (1.5 h):  Gut durch heutige BYD/VARTA-Systeme belegbar.
+                 Tesla Powerwall liegt sogar bei nur 1.2 h.
+
+  2040 (2.0 h):  Entspricht heutigen BYD-Produkten; realistisch für
+                 eine moderate Marktentwicklung.
+
+  2050 (2.5 h):  Entspricht dem Paper-Original (NREL-Annahme).
+                 Für 2050 mit weiter gesunkenen Zellkosten plausibel.
+
+
+
+VERWENDUNG IM MODELL (config.py)
+---------------------------------
+Um die alternative Allokation zu aktivieren, folgenden Eintrag in
+config.py anpassen:
+
+  Original:    "BESS": "bess_allocation.csv"
+  Alternativ:  "BESS": "bess_alternativ/bess_allocation.csv"
