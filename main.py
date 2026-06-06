@@ -6,10 +6,13 @@ from scipy.spatial import ConvexHull
 
 import config
 import functions as funcs
+import plots
 
 
 def main():
     """This is the main function where it all starts."""
+    SHOW_PLOTS = False  # set to False to skip showing plots (but still save them)
+
     conf_list: list[config.Config] = [
         lambda: config.Config(
             year=2050,
@@ -31,10 +34,10 @@ def main():
     
     # run each scenario in conf_list
     for conf in conf_list:
-        _run_analysis(conf=conf())
+        _run_analysis(conf=conf(), SHOW_PLOTS=SHOW_PLOTS)
 
-    
-def _run_analysis(conf: config.Config):
+
+def _run_analysis(conf: config.Config, SHOW_PLOTS: bool):
     """This function orchestrates the optimization of the FFOR for a single configuration conf."""
     
     # run optimizations for initial directions of a,b
@@ -46,7 +49,7 @@ def _run_analysis(conf: config.Config):
     # compute initial convex hull after initial optimization directions
     hull = ConvexHull(pq_flex_points)
     print(f"Initial convex hull area: {hull.volume}")
-    #dummyfuncs._plot_convex_hull(pq_flex_points)
+    plots._plot_FFOR(conf=conf, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
     
     if conf.run_simple_ffor:
         print("INFO: Running simple FFOR with only initial optimization directions.")
@@ -59,7 +62,7 @@ def _run_analysis(conf: config.Config):
         # compute final convex hull after iterating over all directions and adding new points
         hull_final = ConvexHull(pq_flex_points)
         print(f"Final convex hull area: {hull_final.volume}")
-    #dummyfuncs._plot_convex_hull(pq_flex_points)
+        plots._plot_FFOR(conf=conf, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
     
     # export final points to csv
     df_pq_flex = pd.DataFrame(pq_flex_points, columns=["P_flex", "Q_flex"])

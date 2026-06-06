@@ -441,6 +441,10 @@ class Config:
         # save a snapshot of this config.py file with the results
         shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
         
+        # save the node and edge metadata for reference
+        self.node_metadata_df.to_csv(f"{self.output_folder}/node_metadata_df.csv", index=False)
+        self.edges_metadata_df.to_csv(f"{self.output_folder}/edges_metadata_df.csv", index=False)
+        
         # TODO: implement data inputchecks
         # q_base
         assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
