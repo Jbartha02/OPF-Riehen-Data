@@ -6,10 +6,13 @@ from scipy.spatial import ConvexHull
 
 import config
 import functions as funcs
+import plots
 
 
 def main():
     """This is the main function where it all starts."""
+    SHOW_PLOTS = False  # set to False to skip showing plots (but still save them)
+
     conf_list: list[config.Config] = [
         lambda: config.Config(
             year=2050,
@@ -18,6 +21,7 @@ def main():
             start_hour=9,
             n_timesteps=1,
             delta_t=0.5,
+            pv_weather="pvcld",
         ),
         #lambda: config.Config(
         #    year=2050,
@@ -30,10 +34,10 @@ def main():
     
     # run each scenario in conf_list
     for conf in conf_list:
-        _run_analysis(conf=conf())
+        _run_analysis(conf=conf(), SHOW_PLOTS=SHOW_PLOTS)
 
-    
-def _run_analysis(conf: config.Config):
+
+def _run_analysis(conf: config.Config, SHOW_PLOTS: bool):
     """This function orchestrates the optimization of the FFOR for a single configuration conf."""
     
     # run optimizations for initial directions of a,b
@@ -45,17 +49,20 @@ def _run_analysis(conf: config.Config):
     # compute initial convex hull after initial optimization directions
     hull = ConvexHull(pq_flex_points)
     print(f"Initial convex hull area: {hull.volume}")
-    #dummyfuncs._plot_convex_hull(pq_flex_points)
+    plots._plot_FFOR(conf=conf, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
     
-    # optimize every edge-normal direction, defined by the equations of the convex hull (one for each initial direction) and iterate until convergence of the hull area
-    for a,b,c in hull.equations:
-        print(f"Equation: {a}*P_flex + {b}*Q_flex + {c} = 0")
-        pq_flex_points.extend(_maximise_edge_normal(conf=conf, a=a, b=b, c=c, pq_flex_points=pq_flex_points))
-        
-    # compute final convex hull after iterating over all directions and adding new points
-    hull_final = ConvexHull(pq_flex_points)
-    print(f"Final convex hull area: {hull_final.volume}")
-    #dummyfuncs._plot_convex_hull(pq_flex_points)
+    if conf.run_simple_ffor:
+        print("INFO: Running simple FFOR with only initial optimization directions.")
+    else:
+        # optimize every edge-normal direction, defined by the equations of the convex hull (one for each initial direction) and iterate until convergence of the hull area
+        for a,b,c in hull.equations:
+            print(f"Equation: {a}*P_flex + {b}*Q_flex + {c} = 0")
+            pq_flex_points.extend(_maximise_edge_normal(conf=conf, a=a, b=b, c=c, pq_flex_points=pq_flex_points))
+            
+        # compute final convex hull after iterating over all directions and adding new points
+        hull_final = ConvexHull(pq_flex_points)
+        print(f"Final convex hull area: {hull_final.volume}")
+        plots._plot_FFOR(conf=conf, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
     
     # export final points to csv
     df_pq_flex = pd.DataFrame(pq_flex_points, columns=["P_flex", "Q_flex"])
@@ -69,9 +76,8 @@ def _run_analysis(conf: config.Config):
 
 def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[float, float]:
     """Set up the model variables and boundary conditions. Minimize the objective given by -a*P_flex - b*Q_flex and return the optimal P_flex and Q_flex."""
-    # TODO: move this function to functions.py?
-    # TODO: finish implementation of result saving
     
+    # Initialize Gurobi model
     model = gp.Model("OPF")
     model.Params.MIPGap = 0.01  # accept 1% gap - default is 0.01%
     #model.Params.MIPFocus = 1  # focus on finding feasible solutions quickly
@@ -113,41 +119,26 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     Q_inj_expr = {}
 
     for i in conf.node_metadata_df.index:
-        for idx_t, tcol in enumerate(conf.time_index_list):
-
+        for tcol in conf.time_index_list:
             # --- Active power (kW) ---
-            expr_P = gp.LinExpr(float(conf.p_load[i, tcol]))   # fixed load (negative)
-
-            pv = p_pv.get((i, tcol), None)
-            hp = p_hp.get((i, tcol), None)
-            bp = p_bess_pos.get((i, tcol), None)
-            bn = p_bess_neg.get((i, tcol), None)
-            ev = p_ev.get((i, tcol), None)
-
-            if pv is not None: expr_P += pv          # base + p_pv_flex
-            if hp is not None: expr_P += hp          # base + p_hp_flex (<=0)
-            if bp is not None: expr_P += bp          # charging (>=0, withdrawal)
-            if bn is not None: expr_P += bn          # discharging (<=0, injection)
-            if ev is not None: expr_P += ev          # EV charging (positive profile → subtract = withdrawal)
-
+            expr_P = (
+                conf.p_load[i, tcol]              # fixed load (negative)
+                + p_pv.get((i, tcol), 0)          # base + p_pv_flex
+                + p_hp.get((i, tcol), 0)          # base + p_hp_flex (<=0)
+                + p_bess_pos.get((i, tcol), 0)    # charging (>=0, withdrawal)
+                + p_bess_neg.get((i, tcol), 0)    # discharging (<=0, injection)
+                + p_ev.get((i, tcol), 0)          # EV charging (<=0)
+            )
             # --- Reactive power (kVAr) ---
-            expr_Q = gp.LinExpr(0.0)
-
-            qpv = q_pv.get((i, tcol), None)
-            qhp = q_hp.get((i, tcol), None)
-            qbe = q_bess.get((i, tcol), None)
-
-            if qpv is not None: expr_Q += qpv
-            if qhp is not None: expr_Q += qhp
-            if qbe is not None: expr_Q += qbe
-            
-            # TODO: simpler:
-            #expr_P = conf.p_load[i, tcol] + p_pv.get((i, tcol), 0) + p_hp.get((i, tcol), 0) + p_bess_pos.get((i, tcol), 0) + p_bess_neg.get((i, tcol), 0) + p_ev.get((i, tcol), 0)
-            #expr_Q = q_pv.get((i, tcol), 0) + q_hp.get((i, tcol), 0) + q_bess.get((i, tcol), 0)
+            expr_Q = (
+                q_pv.get((i, tcol), 0)            # base + q_pv_flex
+                + q_hp.get((i, tcol), 0)          # base + q_hp_flex
+                + q_bess.get((i, tcol), 0)        # base + q_bess_flex
+            )
 
             # Scale to p.u.
-            P_inj_expr[(i, tcol)] = (1.0 / Sbase_kW) * expr_P # TODO pu base not clear of kW or MW
-            Q_inj_expr[(i, tcol)] = (1.0 / Sbase_kW) * expr_Q
+            P_inj_expr[(i, tcol)] = expr_P / Sbase_kW  # TODO pu base not clear of kW or MW
+            Q_inj_expr[(i, tcol)] = expr_Q / Sbase_kW
 
     # 5) LinDistFlow grid constraints
     V, Pf, Qf = funcs.add_lindistflow_to_model(
@@ -207,17 +198,17 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         # Per-time flex summary
         print("\n  t  | p_flex_total (kW) | q_flex_total (kVAr) | Ppcc (kW)  | Qpcc (kVAr)")
         print("  " + "-"*75)
-        for idx_t in range(T):
+        for t in conf.time_index_list:
             pft = p_flex_total.X
             qft = q_flex_total.X
-            ppcc = sum(Pf[root, j, idx_t].X for j in children_root) * Sbase_kW
-            qpcc = sum(Qf[root, j, idx_t].X for j in children_root) * Sbase_kW
-            print(f"  {conf.time_index_list[idx_t]:2d} | {pft:17.2f} | {qft:19.2f} | {ppcc:10.2f} | {qpcc:10.2f}")
+            ppcc = sum(Pf[root, j, t].X for j in children_root) * Sbase_kW
+            qpcc = sum(Qf[root, j, t].X for j in children_root) * Sbase_kW
+            print(f"  {t:2d} | {pft:17.2f} | {qft:19.2f} | {ppcc:10.2f} | {qpcc:10.2f}")
 
         # Voltage summary: min/max per time step
-        V_arr = np.array([[V[i, tt].X for tt in range(T)] for i in range(N)])
+        V_arr = np.array([[V[i, t].X for t in conf.time_index_list] for i in range(N)])
         print("\nVoltage min/max per time step (p.u.):")
-        for tt in range(T):
+        for tt in range(len(conf.time_index_list)):
             print(f"  t={conf.time_index_list[tt]:2d}: min={V_arr[:,tt].min():.4f}  max={V_arr[:,tt].max():.4f}")
 
     elif model.status in (GRB.INF_OR_UNBD, GRB.INFEASIBLE):
@@ -252,11 +243,11 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         "b_bess_charge": b_bess_charge,
         "p_ev": p_ev,
         "p_ev_flex": p_ev_flex,
-        "Voltage": V,
+        "voltage_pu": V,
     }
     results_edge_t_dict = {
-        "P_edge": Pf, # TODO: currently false time indexes for export. adapt to conf.time_index_list in var definition
-        "Q_edge": Qf,
+        "P_edge_pu": Pf,
+        "Q_edge_pu": Qf,
     }
 
     # extract and save nodal results to longtable

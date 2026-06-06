@@ -14,7 +14,7 @@ import datetime as dt
 class Config:
     
     # directories
-    base_folder: str = "2703_23_homogen"
+    base_folder: str = "2703_23_homogen"  # base folder where data is stored
 
     # filenames
     filename_dict: dict[str, dict[str, str]] = {
@@ -35,8 +35,16 @@ class Config:
         },
         "loadprofiles": {
             "load": "load_profiles.csv",
-            "PV_ub": "pv_generation.csv",
-            "PV_base": "pv_generation.csv",
+            "PV_ub": {
+                "pvavg": "pv_generation.csv",
+                "pvcld": "pv_clouds.csv",
+                "pvsun": "pv_sun.csv"
+            },
+            "PV_base": {
+                "pvavg": "pv_generation.csv",
+                "pvcld": "pv_clouds.csv",
+                "pvsun": "pv_sun.csv"
+            },
             "Ev_base": "ev_7kw/ev_baseload.csv",
             "Ev_lb": "ev_7kw/ev_lowerbound.csv",
             "Ev_ub": "ev_7kw/ev_baseload.csv",
@@ -45,19 +53,32 @@ class Config:
     } # contains the filenames of the input files for each type of data
 
     # optimization parameters
-    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
-    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
+    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR
+    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q
 
     # technology parameters
     pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
-    hp_lb_temp: int = 19  #°C
-    hp_base_temp: int = 21  #°C
-    hp_ub_temp: int = 23  #°C
+    hp_lb_temp: int = 20  #°C, minimum temperature inside the houses
+    hp_base_temp_dict: dict[int, int] = {
+        1: 21,
+        2: 21,
+        3: 21,
+        4: 21.4,
+        5: 21.8,
+        6: 21.8,
+        7: 21.8,
+        8: 21.8,
+        9: 21.8,
+        10: 21.4,
+        11: 21,
+        12: 21,
+    }  #°C per month of the year, base temperature inside the houses
+    hp_ub_temp: int = 22  #°C, maximum temperature inside the houses
     hp_output_temp: int = 30  #°C the temperature to which the HP heats the water for the heating system, used for cop calculation (assumed to be constant over the year)
     hp_q_p_ratio: float = 0.3  # TODO: define/update value (maybe also as cos_phi or similar)
-    bess_soc_lb: float = 0.3
-    bess_soc_base: float = 0.5
-    bess_soc_ub: float = 0.7
+    bess_soc_lb: float = 0.3  # min state of charge of bess
+    bess_soc_base: float = 0.5  # base state of charge of bess
+    bess_soc_ub: float = 0.7  # max state of charge of bess
     bess_power_octagon_approximation: list[tuple[float, float]] = [
         (1, np.sqrt(2)-1), (1, -(np.sqrt(2)-1)), (-1, np.sqrt(2)-1), (-1, -(np.sqrt(2)-1)),
         (np.sqrt(2)-1, 1), (-(np.sqrt(2)-1), 1), (np.sqrt(2)-1, -1), (-(np.sqrt(2)-1), -1)
@@ -71,6 +92,8 @@ class Config:
     
 
     # --------- Derived parameters and data structures (calculated in __init__) --------- #
+    run_simple_ffor: bool  # runs only four initial optimization directions if True, otherwise determines detailed FFOR
+    
     # directories
     analysis_folder: str  # folder with the input data
     output_folder: str  # folder where outputs are stored
@@ -109,7 +132,7 @@ class Config:
     t_hp_base: np.ndarray
     t_hp_ub: np.ndarray
     t_hp_lb: np.ndarray
-    t_outdoor: np.ndarray # TODO: make a profile that is always smaller than t_hp to avoid negative delta_t that would result in negative p_hp
+    t_outdoor: np.ndarray
     p_hp_base: np.ndarray
     q_hp_base: np.ndarray
     cop_hp: np.ndarray
@@ -129,7 +152,23 @@ class Config:
     p_ev_ub: np.ndarray
     
 
-    def __init__(self, year: int, month: int, day: int, start_hour: int, n_timesteps: int, delta_t: float = 1.0):
+    def __init__(self, year: int, month: int, day: int, start_hour: int, n_timesteps: int, delta_t: float = 1.0, pv_weather: str = "pvavg", no_ev: bool = False, no_bess: bool = False, run_simple_ffor: bool = False):
+        """Initialize configuration for an analysis run.
+
+        Parameters
+        - year (int): Analysis year (e.g., 2030, 2040 or 2050); must correspond to a subfolder name with the input data.
+        - month (int): Analysis month (1-12).
+        - day (int): Analysis day of month (1-31).
+        - start_hour (int): Starting hour of the analysis (0-23).
+        - n_timesteps (int): Number of timesteps to simulate.
+        - delta_t (float): Timestep length in hours; if n_timesteps != 1, it is overridden to 1.0.
+        - pv_weather (str): PV weather profile to use; one of 'pvavg', 'pvcld', 'pvsun'.
+        - no_ev (bool): If True, exclude EVs from the simulation (default False).
+        - no_bess (bool): If True, exclude BESS from the simulation (default False).
+        - run_simple_ffor (bool): If True, run only the first four optimization directions (+/- P-flex, +/- Q_flex) (default False).
+        """
+        assert pv_weather in self.filename_dict["loadprofiles"]["PV_ub"].keys(), "Check that pv is one of the options: 'pvavg', 'pvcld', 'pvsun'"
+        assert pv_weather in self.filename_dict["loadprofiles"]["PV_base"].keys(), "Check that pv is one of the options: 'pvavg', 'pvcld', 'pvsun'"
         
         # Initialize init parameters
         self.analysis_year = year
@@ -138,15 +177,19 @@ class Config:
         self.analysis_start_hour = start_hour
         self.analysis_n_timesteps = n_timesteps
         self.delta_t = delta_t
+        self.run_simple_ffor = run_simple_ffor
 
         # overwrite delta_t if n_timesteps is not 1
-        if self.analysis_n_timesteps != 1 and self.delta_t != 1:
+        if self.analysis_n_timesteps != 1 and self.delta_t != 1.0:
             print("WARNING: Overwriting delta_t to 1 hour.")
-            self.delta_t = 1  # hours
+            self.delta_t = 1.0  # hours
         
         # directories
         self.analysis_folder = f"{self.base_folder}/{self.analysis_year}"
-        self.output_folder = f"{self.analysis_folder}/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
+        suffix_no_ev = "_noev" if no_ev else ""
+        suffix_no_bess = "_nobess" if no_bess else ""
+        suffix_simple_ffor = "_simpleffor" if run_simple_ffor else ""
+        self.output_folder = f"{self.analysis_folder}/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{pv_weather}{suffix_no_ev}{suffix_no_bess}{suffix_simple_ffor}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
 
         # time parameters
         self.analysis_date_mm_dd = f"{self.analysis_month:02d}-{self.analysis_day:02d}"
@@ -166,14 +209,14 @@ class Config:
         self.p_load = -1 * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["load"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         
         # PV
-        self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
-        self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"][pv_weather], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"][pv_weather], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_pv_lb = np.zeros_like(self.p_load)
         self.q_pv_base = np.zeros_like(self.p_load) # assumed to be zero
         
         # HP
         self.t_hp_ub = self.hp_ub_temp * np.ones_like(self.p_load)
-        self.t_hp_base = self.hp_base_temp * np.ones_like(self.p_load)
+        self.t_hp_base = self.hp_base_temp_dict[self.analysis_month] * np.ones_like(self.p_load)
         self.t_hp_lb = self.hp_lb_temp * np.ones_like(self.p_load)
         t_outdoor_raw = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
         self.t_outdoor = np.minimum(t_outdoor_raw, self.hp_lb_temp) # make sure that t_outdoor is always smaller than hp_lb_temp to avoid negative delta_t and thus negative p_hp_base
@@ -186,11 +229,25 @@ class Config:
         self.soc_bess_lb = self.bess_soc_lb * np.ones_like(self.p_load)
         self.p_bess_base_neg, self.p_bess_base_pos = self._calculate_bess_p(node_metadata_df=self.node_metadata_df, soc_bess_base=self.soc_bess_base)
         self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
+        if no_bess: # deactivate BESS
+            # overwrite the BESS profiles with zeros
+            self.soc_bess_ub = np.zeros_like(self.soc_bess_ub)
+            self.soc_bess_base = np.zeros_like(self.soc_bess_base)
+            self.soc_bess_lb = np.zeros_like(self.soc_bess_lb)
+            self.p_bess_base_neg = np.zeros_like(self.p_bess_base_neg)
+            self.p_bess_base_pos = np.zeros_like(self.p_bess_base_pos)
+            # set the BESS powers to zero
+            self.node_metadata_df["BESS_Nominal_power_kW"] = 0 * self.node_metadata_df["BESS_Nominal_power_kW"] 
         
         # EV
         self.p_ev_lb = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_lb"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_ev_base = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_ev_ub = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        if no_ev: # deactivate EV
+            # overwrite the EV profiles with zeros
+            self.p_ev_lb = np.zeros_like(self.p_ev_lb)
+            self.p_ev_base = np.zeros_like(self.p_ev_base)
+            self.p_ev_ub = np.zeros_like(self.p_ev_ub)
         
         # Some data checks
         self._post_init_checks()
@@ -200,13 +257,13 @@ class Config:
         """Returns p_bess_base_neg and p_bess_base_pos for every node for every timestep."""
         # prepare params
         soc_bess_base_prev = np.roll(soc_bess_base, shift=1, axis=1)
-        bess_capacity = node_metadata_df["BESS_Battery_capacity_kWh"].to_numpy()[:, np.newaxis]
-        bess_charging_efficiency = node_metadata_df["BESS_Charging_efficiency"].to_numpy()[:, np.newaxis]
-        bess_discharging_efficiency = node_metadata_df["BESS_Discharging_efficiency"].to_numpy()[:, np.newaxis]
+        capacity_kWh = node_metadata_df["BESS_Battery_capacity_kWh"].to_numpy()[:, np.newaxis]
+        eta_ch = node_metadata_df["BESS_Charging_efficiency"].to_numpy()[:, np.newaxis]
+        eta_disch = node_metadata_df["BESS_Discharging_efficiency"].to_numpy()[:, np.newaxis]
         
         # calculate p_bess_base_neg and p_bess_base_pos
-        p_bess_base_neg = np.minimum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity / bess_charging_efficiency) # charging of battery, only negative values
-        p_bess_base_pos = np.maximum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity * bess_discharging_efficiency) # discharging of battery, only positive values
+        p_bess_base_neg = np.minimum(0, (soc_bess_base_prev - soc_bess_base) * capacity_kWh / self.delta_t / eta_ch) # charging of battery, only negative values
+        p_bess_base_pos = np.maximum(0, (soc_bess_base_prev - soc_bess_base) * capacity_kWh / self.delta_t * eta_disch) # discharging of battery, only positive values
 
         return p_bess_base_neg, p_bess_base_pos
 
@@ -384,6 +441,10 @@ class Config:
         # save a snapshot of this config.py file with the results
         shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
         
+        # save the node and edge metadata for reference
+        self.node_metadata_df.to_csv(f"{self.output_folder}/node_metadata_df.csv", index=False)
+        self.edges_metadata_df.to_csv(f"{self.output_folder}/edges_metadata_df.csv", index=False)
+        
         # TODO: implement data inputchecks
         # q_base
         assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
@@ -395,7 +456,7 @@ class Config:
         
         # soc and hp: lb, base, ub
         assert 0 <= self.bess_soc_lb <= self.bess_soc_base <= self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
-        assert 17 <= self.hp_lb_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
+        assert 17 <= self.hp_lb_temp <= min(self.hp_base_temp_dict.values()) <= max(self.hp_base_temp_dict.values()) <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
         
         assert np.logical_and(self.p_ev_ub <= self.p_ev_base, self.p_ev_base <= self.p_ev_lb, self.p_ev_lb <= 0).all(), "p_ev must be negative"
         
