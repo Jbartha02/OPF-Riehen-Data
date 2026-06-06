@@ -79,6 +79,8 @@ class Config:
     
 
     # --------- Derived parameters and data structures (calculated in __init__) --------- #
+    run_simple_ffor: bool  # runs only four initial optimization directions if True, otherwise determines detailed FFOR
+    
     # directories
     analysis_folder: str  # folder with the input data
     output_folder: str  # folder where outputs are stored
@@ -165,9 +167,9 @@ class Config:
         self.run_simple_ffor = run_simple_ffor
 
         # overwrite delta_t if n_timesteps is not 1
-        if self.analysis_n_timesteps != 1 and self.delta_t != 1:
+        if self.analysis_n_timesteps != 1 and self.delta_t != 1.0:
             print("WARNING: Overwriting delta_t to 1 hour.")
-            self.delta_t = 1  # hours
+            self.delta_t = 1.0  # hours
         
         # directories
         self.analysis_folder = f"{self.base_folder}/{self.analysis_year}"
@@ -242,13 +244,13 @@ class Config:
         """Returns p_bess_base_neg and p_bess_base_pos for every node for every timestep."""
         # prepare params
         soc_bess_base_prev = np.roll(soc_bess_base, shift=1, axis=1)
-        bess_capacity = node_metadata_df["BESS_Battery_capacity_kWh"].to_numpy()[:, np.newaxis]
-        bess_charging_efficiency = node_metadata_df["BESS_Charging_efficiency"].to_numpy()[:, np.newaxis]
-        bess_discharging_efficiency = node_metadata_df["BESS_Discharging_efficiency"].to_numpy()[:, np.newaxis]
+        capacity_kWh = node_metadata_df["BESS_Battery_capacity_kWh"].to_numpy()[:, np.newaxis]
+        eta_ch = node_metadata_df["BESS_Charging_efficiency"].to_numpy()[:, np.newaxis]
+        eta_disch = node_metadata_df["BESS_Discharging_efficiency"].to_numpy()[:, np.newaxis]
         
         # calculate p_bess_base_neg and p_bess_base_pos
-        p_bess_base_neg = np.minimum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity / bess_charging_efficiency) # charging of battery, only negative values
-        p_bess_base_pos = np.maximum(0, self.delta_t * (soc_bess_base_prev - soc_bess_base) * bess_capacity * bess_discharging_efficiency) # discharging of battery, only positive values
+        p_bess_base_neg = np.minimum(0, (soc_bess_base_prev - soc_bess_base) * capacity_kWh / self.delta_t / eta_ch) # charging of battery, only negative values
+        p_bess_base_pos = np.maximum(0, (soc_bess_base_prev - soc_bess_base) * capacity_kWh / self.delta_t * eta_disch) # discharging of battery, only positive values
 
         return p_bess_base_neg, p_bess_base_pos
 

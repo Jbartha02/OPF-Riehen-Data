@@ -135,12 +135,12 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
         for t in times:
             if t == times[0]:
                 model.addConstr(
-                    soc_bess[node, t] == conf.soc_bess_base[node, t+23] - conf.delta_t / capacity_kWh * (conf.p_bess_base_pos[node, t+23] * eta_ch + conf.p_bess_base_neg[node, t-1] / eta_disch), # TODO: implement delta_t?
+                    soc_bess[node, t] == conf.soc_bess_base[node, t+23] - conf.delta_t / capacity_kWh * (p_bess_pos[node, t] / eta_disch + p_bess_neg[node, t] * eta_ch), # p_bess_pos (>= 0) is discharge of battery into the grid
                     name=f"soc_bess_balance_n{node}_t{t}",
                 )
             else:
                 model.addConstr(
-                    soc_bess[node, t] == soc_bess[node, t-1] - conf.delta_t / capacity_kWh * (p_bess_pos[node, t-1] * eta_ch + p_bess_neg[node, t-1] / eta_disch), # TODO: implement delta_t?
+                    soc_bess[node, t] == soc_bess[node, t-1] - conf.delta_t / capacity_kWh * (p_bess_pos[node, t] / eta_disch + p_bess_neg[node, t] * eta_ch), # p_bess_pos (>= 0) is discharge of battery into the grid
                     name=f"soc_bess_balance_n{node}_t{t}",
                 )
             model.addConstr(
@@ -153,10 +153,10 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
                 soc_bess[node, t] >= conf.soc_bess_lb[node, t], name=f"soc_bess_lb_n{node}_t{t}"
             )
             model.addConstr(
-                p_bess_pos[node, t] <= power_kVA * b_bess_charge[node, t], name=f"p_bess_pos_charge_n{node}_t{t}"
+                p_bess_pos[node, t] <= power_kVA * (1 - b_bess_charge[node, t]), name=f"p_bess_pos_charge_n{node}_t{t}" # p_bess_pos (>= 0) is discharge of battery into the grid
             )
             model.addConstr(
-                p_bess_neg[node, t] >= -power_kVA * (1 - b_bess_charge[node, t]), name=f"p_bess_neg_discharge_n{node}_t{t}"
+                p_bess_neg[node, t] >= -power_kVA * b_bess_charge[node, t], name=f"p_bess_neg_discharge_n{node}_t{t}" # p_bess_neg (<= 0) is charge of battery from the grid
             )
             model.addConstr(
                 p_bess_pos[node, t] >= 0, name=f"p_bess_pos_lb_n{node}_t{t}"

@@ -211,17 +211,17 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         # Per-time flex summary
         print("\n  t  | p_flex_total (kW) | q_flex_total (kVAr) | Ppcc (kW)  | Qpcc (kVAr)")
         print("  " + "-"*75)
-        for idx_t in range(T):
+        for t in conf.time_index_list:
             pft = p_flex_total.X
             qft = q_flex_total.X
-            ppcc = sum(Pf[root, j, idx_t].X for j in children_root) * Sbase_kW
-            qpcc = sum(Qf[root, j, idx_t].X for j in children_root) * Sbase_kW
-            print(f"  {conf.time_index_list[idx_t]:2d} | {pft:17.2f} | {qft:19.2f} | {ppcc:10.2f} | {qpcc:10.2f}")
+            ppcc = sum(Pf[root, j, t].X for j in children_root) * Sbase_kW
+            qpcc = sum(Qf[root, j, t].X for j in children_root) * Sbase_kW
+            print(f"  {t:2d} | {pft:17.2f} | {qft:19.2f} | {ppcc:10.2f} | {qpcc:10.2f}")
 
         # Voltage summary: min/max per time step
-        V_arr = np.array([[V[i, tt].X for tt in range(T)] for i in range(N)])
+        V_arr = np.array([[V[i, t].X for t in conf.time_index_list] for i in range(N)])
         print("\nVoltage min/max per time step (p.u.):")
-        for tt in range(T):
+        for tt in range(len(conf.time_index_list)):
             print(f"  t={conf.time_index_list[tt]:2d}: min={V_arr[:,tt].min():.4f}  max={V_arr[:,tt].max():.4f}")
 
     elif model.status in (GRB.INF_OR_UNBD, GRB.INFEASIBLE):
@@ -256,11 +256,11 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         "b_bess_charge": b_bess_charge,
         "p_ev": p_ev,
         "p_ev_flex": p_ev_flex,
-        "Voltage": V,
+        "voltage_pu": V,
     }
     results_edge_t_dict = {
-        "P_edge": Pf, # TODO: currently false time indexes for export. adapt to conf.time_index_list in var definition
-        "Q_edge": Qf,
+        "P_edge_pu": Pf,
+        "Q_edge_pu": Qf,
     }
 
     # extract and save nodal results to longtable
