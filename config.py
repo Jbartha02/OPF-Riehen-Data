@@ -14,7 +14,7 @@ import datetime as dt
 class Config:
     
     # directories
-    base_folder: str = "2703_23_homogen"
+    base_folder: str = "2703_23_homogen"  # base folder where data is stored
 
     # filenames
     filename_dict: dict[str, dict[str, str]] = {
@@ -53,8 +53,8 @@ class Config:
     } # contains the filenames of the input files for each type of data
 
     # optimization parameters
-    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR #TODO: define/update this value
-    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q #TODO: define/update this value
+    eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR
+    optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q
 
     # technology parameters
     pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
@@ -63,9 +63,9 @@ class Config:
     hp_ub_temp: int = 23  #°C
     hp_output_temp: int = 30  #°C the temperature to which the HP heats the water for the heating system, used for cop calculation (assumed to be constant over the year)
     hp_q_p_ratio: float = 0.3  # TODO: define/update value (maybe also as cos_phi or similar)
-    bess_soc_lb: float = 0.3
-    bess_soc_base: float = 0.5
-    bess_soc_ub: float = 0.7
+    bess_soc_lb: float = 0.3  # min state of charge of bess
+    bess_soc_base: float = 0.5  # base state of charge of bess
+    bess_soc_ub: float = 0.7  # max state of charge of bess
     bess_power_octagon_approximation: list[tuple[float, float]] = [
         (1, np.sqrt(2)-1), (1, -(np.sqrt(2)-1)), (-1, np.sqrt(2)-1), (-1, -(np.sqrt(2)-1)),
         (np.sqrt(2)-1, 1), (-(np.sqrt(2)-1), 1), (np.sqrt(2)-1, -1), (-(np.sqrt(2)-1), -1)
@@ -119,7 +119,7 @@ class Config:
     t_hp_base: np.ndarray
     t_hp_ub: np.ndarray
     t_hp_lb: np.ndarray
-    t_outdoor: np.ndarray # TODO: make a profile that is always smaller than t_hp to avoid negative delta_t that would result in negative p_hp
+    t_outdoor: np.ndarray
     p_hp_base: np.ndarray
     q_hp_base: np.ndarray
     cop_hp: np.ndarray
@@ -216,8 +216,8 @@ class Config:
         self.soc_bess_lb = self.bess_soc_lb * np.ones_like(self.p_load)
         self.p_bess_base_neg, self.p_bess_base_pos = self._calculate_bess_p(node_metadata_df=self.node_metadata_df, soc_bess_base=self.soc_bess_base)
         self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
-        if no_bess:
-            # overwrite the BESS profiles with zeros if no_bess is True
+        if no_bess: # deactivate BESS
+            # overwrite the BESS profiles with zeros
             self.soc_bess_ub = np.zeros_like(self.soc_bess_ub)
             self.soc_bess_base = np.zeros_like(self.soc_bess_base)
             self.soc_bess_lb = np.zeros_like(self.soc_bess_lb)
@@ -230,8 +230,8 @@ class Config:
         self.p_ev_lb = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_lb"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_ev_base = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_ev_ub = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
-        if no_ev:
-            # overwrite the EV profiles with zeros if no_ev is True
+        if no_ev: # deactivate EV
+            # overwrite the EV profiles with zeros
             self.p_ev_lb = np.zeros_like(self.p_ev_lb)
             self.p_ev_base = np.zeros_like(self.p_ev_base)
             self.p_ev_ub = np.zeros_like(self.p_ev_ub)

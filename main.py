@@ -73,9 +73,8 @@ def _run_analysis(conf: config.Config):
 
 def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[float, float]:
     """Set up the model variables and boundary conditions. Minimize the objective given by -a*P_flex - b*Q_flex and return the optimal P_flex and Q_flex."""
-    # TODO: move this function to functions.py?
-    # TODO: finish implementation of result saving
     
+    # Initialize Gurobi model
     model = gp.Model("OPF")
     model.Params.MIPGap = 0.01  # accept 1% gap - default is 0.01%
     #model.Params.MIPFocus = 1  # focus on finding feasible solutions quickly
@@ -117,41 +116,26 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     Q_inj_expr = {}
 
     for i in conf.node_metadata_df.index:
-        for idx_t, tcol in enumerate(conf.time_index_list):
-
+        for tcol in conf.time_index_list:
             # --- Active power (kW) ---
-            expr_P = gp.LinExpr(float(conf.p_load[i, tcol]))   # fixed load (negative)
-
-            pv = p_pv.get((i, tcol), None)
-            hp = p_hp.get((i, tcol), None)
-            bp = p_bess_pos.get((i, tcol), None)
-            bn = p_bess_neg.get((i, tcol), None)
-            ev = p_ev.get((i, tcol), None)
-
-            if pv is not None: expr_P += pv          # base + p_pv_flex
-            if hp is not None: expr_P += hp          # base + p_hp_flex (<=0)
-            if bp is not None: expr_P += bp          # charging (>=0, withdrawal)
-            if bn is not None: expr_P += bn          # discharging (<=0, injection)
-            if ev is not None: expr_P += ev          # EV charging (positive profile → subtract = withdrawal)
-
+            expr_P = (
+                conf.p_load[i, tcol]              # fixed load (negative)
+                + p_pv.get((i, tcol), 0)          # base + p_pv_flex
+                + p_hp.get((i, tcol), 0)          # base + p_hp_flex (<=0)
+                + p_bess_pos.get((i, tcol), 0)    # charging (>=0, withdrawal)
+                + p_bess_neg.get((i, tcol), 0)    # discharging (<=0, injection)
+                + p_ev.get((i, tcol), 0)          # EV charging (<=0)
+            )
             # --- Reactive power (kVAr) ---
-            expr_Q = gp.LinExpr(0.0)
-
-            qpv = q_pv.get((i, tcol), None)
-            qhp = q_hp.get((i, tcol), None)
-            qbe = q_bess.get((i, tcol), None)
-
-            if qpv is not None: expr_Q += qpv
-            if qhp is not None: expr_Q += qhp
-            if qbe is not None: expr_Q += qbe
-            
-            # TODO: simpler:
-            #expr_P = conf.p_load[i, tcol] + p_pv.get((i, tcol), 0) + p_hp.get((i, tcol), 0) + p_bess_pos.get((i, tcol), 0) + p_bess_neg.get((i, tcol), 0) + p_ev.get((i, tcol), 0)
-            #expr_Q = q_pv.get((i, tcol), 0) + q_hp.get((i, tcol), 0) + q_bess.get((i, tcol), 0)
+            expr_Q = (
+                q_pv.get((i, tcol), 0)            # base + q_pv_flex
+                + q_hp.get((i, tcol), 0)          # base + q_hp_flex
+                + q_bess.get((i, tcol), 0)        # base + q_bess_flex
+            )
 
             # Scale to p.u.
-            P_inj_expr[(i, tcol)] = (1.0 / Sbase_kW) * expr_P # TODO pu base not clear of kW or MW
-            Q_inj_expr[(i, tcol)] = (1.0 / Sbase_kW) * expr_Q
+            P_inj_expr[(i, tcol)] = expr_P / Sbase_kW  # TODO pu base not clear of kW or MW
+            Q_inj_expr[(i, tcol)] = expr_Q / Sbase_kW
 
     # 5) LinDistFlow grid constraints
     V, Pf, Qf = funcs.add_lindistflow_to_model(

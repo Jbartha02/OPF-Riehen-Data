@@ -19,9 +19,9 @@ def define_pv_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
     q_pv_ub_abs = conf.pv_max_q_p_ratio * p_pv_ub_abs
     
     # Initialize variables
-    p_pv = model.addVars(nodes, times, lb=0, ub=p_pv_ub_abs, vtype=GRB.CONTINUOUS, name="p_pv")
-    p_pv_flex = model.addVars(nodes, times, lb=-p_pv_ub_abs, ub=p_pv_ub_abs, vtype=GRB.CONTINUOUS, name="p_pv_flex")
-    q_pv = model.addVars(nodes, times, lb=-q_pv_ub_abs, ub=q_pv_ub_abs, vtype=GRB.CONTINUOUS, name="q_pv")
+    p_pv = model.addVars(nodes, times, lb=0, ub=p_pv_ub_abs, vtype=GRB.CONTINUOUS, name="p_pv") # kW
+    p_pv_flex = model.addVars(nodes, times, lb=-p_pv_ub_abs, ub=p_pv_ub_abs, vtype=GRB.CONTINUOUS, name="p_pv_flex") # kW
+    q_pv = model.addVars(nodes, times, lb=-q_pv_ub_abs, ub=q_pv_ub_abs, vtype=GRB.CONTINUOUS, name="q_pv") # kVAr
     q_pv_flex = q_pv # only because q_pv_base is zero!
     
     # Define constraints
@@ -58,11 +58,11 @@ def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
     t_hp_ub = np.nanmax(conf.t_hp_ub)
     
     # Initialize variables
-    p_hp = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_hp")
-    p_hp_flex = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=p_hp_ub_abs, vtype=GRB.CONTINUOUS, name="p_hp_flex")
-    q_hp = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="q_hp") #TODO: remove this (can be replaced in equations)
-    q_hp_flex = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=q_hp_ub_abs, vtype=GRB.CONTINUOUS, name="q_hp_flex")
-    t_hp = model.addVars(nodes, times, lb=t_hp_lb, ub=t_hp_ub, vtype=GRB.CONTINUOUS, name="t_hp")
+    p_hp = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_hp") # kW
+    p_hp_flex = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=p_hp_ub_abs, vtype=GRB.CONTINUOUS, name="p_hp_flex") # kW
+    q_hp = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="q_hp") # kVAr #TODO: remove this (can be replaced in equations)
+    q_hp_flex = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=q_hp_ub_abs, vtype=GRB.CONTINUOUS, name="q_hp_flex") # kVAr
+    t_hp = model.addVars(nodes, times, lb=t_hp_lb, ub=t_hp_ub, vtype=GRB.CONTINUOUS, name="t_hp") # °C
     
     # Define constraints
     for node in nodes:
@@ -118,10 +118,10 @@ def define_bess_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.t
     s_bess_ub_abs = np.abs(conf.node_metadata_df.loc[conf.node_group_dict["BESS"], "BESS_Nominal_power_kW"].to_numpy()).max()
     
     # Initialize variables
-    p_bess_pos = model.addVars(nodes, times, lb=0, ub=s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="p_bess_pos")
-    p_bess_neg = model.addVars(nodes, times, lb=-s_bess_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_bess_neg")
-    p_bess_flex = model.addVars(nodes, times, lb=-2*s_bess_ub_abs, ub=2*s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="p_bess_flex")
-    q_bess = model.addVars(nodes, times, lb=-s_bess_ub_abs, ub=s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="q_bess")
+    p_bess_pos = model.addVars(nodes, times, lb=0, ub=s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="p_bess_pos") # kW
+    p_bess_neg = model.addVars(nodes, times, lb=-s_bess_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_bess_neg") # kW
+    p_bess_flex = model.addVars(nodes, times, lb=-2*s_bess_ub_abs, ub=2*s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="p_bess_flex") # kW
+    q_bess = model.addVars(nodes, times, lb=-s_bess_ub_abs, ub=s_bess_ub_abs, vtype=GRB.CONTINUOUS, name="q_bess") # kVAr
     q_bess_flex = q_bess # only because q_bess_base is zero!
     soc_bess = model.addVars(nodes, times, lb=0, ub=1, vtype=GRB.CONTINUOUS, name="soc_bess")
     b_bess_charge = model.addVars(nodes, times, vtype=GRB.BINARY, name="b_bess_charge")
@@ -183,8 +183,8 @@ def define_ev_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
     p_ev_flex_ub = np.nanmax(conf.p_ev_lb - conf.p_ev_base) # this is larger than 0
     
     # Initialize variables
-    p_ev = model.addVars(nodes, times, lb=p_ev_lb, ub=p_ev_ub, vtype=GRB.CONTINUOUS, name="p_ev")
-    p_ev_flex = model.addVars(nodes, times, lb=p_ev_flex_lb, ub=p_ev_flex_ub, vtype=GRB.CONTINUOUS, name="p_ev_flex")
+    p_ev = model.addVars(nodes, times, lb=p_ev_lb, ub=p_ev_ub, vtype=GRB.CONTINUOUS, name="p_ev") # kW
+    p_ev_flex = model.addVars(nodes, times, lb=p_ev_flex_lb, ub=p_ev_flex_ub, vtype=GRB.CONTINUOUS, name="p_ev_flex") # kW
 
     for node in nodes:
         for t in times:
@@ -372,9 +372,9 @@ def add_lindistflow_to_model(model: gp.Model, time_index_list, data: Dict[str, A
     inc_out = data["incidence_out"]
 
     # Variables
-    V = model.addVars(nodes, times, name="V", lb=V_min, ub=V_max)
-    P = model.addVars(edges, times, name="P", lb=-GRB.INFINITY, ub=GRB.INFINITY)
-    Q = model.addVars(edges, times, name="Q", lb=-GRB.INFINITY, ub=GRB.INFINITY)
+    V = model.addVars(nodes, times, name="V", lb=V_min, ub=V_max)  # pu
+    P = model.addVars(edges, times, name="P", lb=-GRB.INFINITY, ub=GRB.INFINITY)  # pu
+    Q = model.addVars(edges, times, name="Q", lb=-GRB.INFINITY, ub=GRB.INFINITY)  # pu
 
     # Fix root voltage if desired
     if fix_root_voltage is not None:
