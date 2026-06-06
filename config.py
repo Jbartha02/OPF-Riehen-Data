@@ -35,8 +35,16 @@ class Config:
         },
         "loadprofiles": {
             "load": "load_profiles.csv",
-            "PV_ub": "pv_generation.csv",
-            "PV_base": "pv_generation.csv",
+            "PV_ub": {
+                "pvavg": "pv_generation.csv",
+                "pvcld": "pv_clouds.csv",
+                "pvsun": "pv_sun.csv"
+            },
+            "PV_base": {
+                "pvavg": "pv_generation.csv",
+                "pvcld": "pv_clouds.csv",
+                "pvsun": "pv_sun.csv"
+            },
             "Ev_base": "ev_7kw/ev_baseload.csv",
             "Ev_lb": "ev_7kw/ev_lowerbound.csv",
             "Ev_ub": "ev_7kw/ev_baseload.csv",
@@ -129,7 +137,23 @@ class Config:
     p_ev_ub: np.ndarray
     
 
-    def __init__(self, year: int, month: int, day: int, start_hour: int, n_timesteps: int, delta_t: float = 1.0):
+    def __init__(self, year: int, month: int, day: int, start_hour: int, n_timesteps: int, delta_t: float = 1.0, pv_weather: str = "pvavg", no_ev: bool = False, no_bess: bool = False, run_simple_ffor: bool = False):
+        """Initialize configuration for an analysis run.
+
+        Parameters
+        - year (int): Analysis year (e.g., 2030, 2040 or 2050); must correspond to a subfolder name with the input data.
+        - month (int): Analysis month (1-12).
+        - day (int): Analysis day of month (1-31).
+        - start_hour (int): Starting hour of the analysis (0-23).
+        - n_timesteps (int): Number of timesteps to simulate.
+        - delta_t (float): Timestep length in hours; if n_timesteps != 1, it is overridden to 1.0.
+        - pv_weather (str): PV weather profile to use; one of 'pvavg', 'pvcld', 'pvsun'.
+        - no_ev (bool): If True, exclude EVs from the simulation (default False).
+        - no_bess (bool): If True, exclude BESS from the simulation (default False).
+        - run_simple_ffor (bool): If True, run only the first four optimization directions (+/- P-flex, +/- Q_flex) (default False).
+        """
+        assert pv_weather in self.filename_dict["loadprofiles"]["PV_ub"].keys(), "Check that pv is one of the options: 'pvavg', 'pvcld', 'pvsun'"
+        assert pv_weather in self.filename_dict["loadprofiles"]["PV_base"].keys(), "Check that pv is one of the options: 'pvavg', 'pvcld', 'pvsun'"
         
         # Initialize init parameters
         self.analysis_year = year
@@ -138,6 +162,7 @@ class Config:
         self.analysis_start_hour = start_hour
         self.analysis_n_timesteps = n_timesteps
         self.delta_t = delta_t
+        self.run_simple_ffor = run_simple_ffor
 
         # overwrite delta_t if n_timesteps is not 1
         if self.analysis_n_timesteps != 1 and self.delta_t != 1:
@@ -146,7 +171,10 @@ class Config:
         
         # directories
         self.analysis_folder = f"{self.base_folder}/{self.analysis_year}"
-        self.output_folder = f"{self.analysis_folder}/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
+        suffix_no_ev = "_noev" if no_ev else ""
+        suffix_no_bess = "_nobess" if no_bess else ""
+        suffix_simple_ffor = "_simpleffor" if run_simple_ffor else ""
+        self.output_folder = f"{self.analysis_folder}/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{pv_weather}{suffix_no_ev}{suffix_no_bess}{suffix_simple_ffor}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
 
         # time parameters
         self.analysis_date_mm_dd = f"{self.analysis_month:02d}-{self.analysis_day:02d}"
@@ -166,8 +194,8 @@ class Config:
         self.p_load = -1 * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["load"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         
         # PV
-        self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
-        self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_pv_ub = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_ub"][pv_weather], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        self.p_pv_base = self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["PV_base"][pv_weather], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_pv_lb = np.zeros_like(self.p_load)
         self.q_pv_base = np.zeros_like(self.p_load) # assumed to be zero
         
@@ -186,11 +214,25 @@ class Config:
         self.soc_bess_lb = self.bess_soc_lb * np.ones_like(self.p_load)
         self.p_bess_base_neg, self.p_bess_base_pos = self._calculate_bess_p(node_metadata_df=self.node_metadata_df, soc_bess_base=self.soc_bess_base)
         self.q_bess_base = np.zeros_like(self.p_bess_base_neg) # assumed to be zero
+        if no_bess:
+            # overwrite the BESS profiles with zeros if no_bess is True
+            self.soc_bess_ub = np.zeros_like(self.soc_bess_ub)
+            self.soc_bess_base = np.zeros_like(self.soc_bess_base)
+            self.soc_bess_lb = np.zeros_like(self.soc_bess_lb)
+            self.p_bess_base_neg = np.zeros_like(self.p_bess_base_neg)
+            self.p_bess_base_pos = np.zeros_like(self.p_bess_base_pos)
+            # set the BESS powers to zero
+            self.node_metadata_df["BESS_Nominal_power_kW"] = 0 * self.node_metadata_df["BESS_Nominal_power_kW"] 
         
         # EV
         self.p_ev_lb = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_lb"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_ev_base = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_base"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
         self.p_ev_ub = (-1) * self._ingest_load_profile(analysis_folder=self.analysis_folder, filename=self.filename_dict["loadprofiles"]["Ev_ub"], analysis_day=self.analysis_date_mm_dd, node_metadata=self.node_metadata_df)
+        if no_ev:
+            # overwrite the EV profiles with zeros if no_ev is True
+            self.p_ev_lb = np.zeros_like(self.p_ev_lb)
+            self.p_ev_base = np.zeros_like(self.p_ev_base)
+            self.p_ev_ub = np.zeros_like(self.p_ev_ub)
         
         # Some data checks
         self._post_init_checks()

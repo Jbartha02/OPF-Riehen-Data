@@ -18,6 +18,7 @@ def main():
             start_hour=9,
             n_timesteps=1,
             delta_t=0.5,
+            pv_weather="pvcld",
         ),
         #lambda: config.Config(
         #    year=2050,
@@ -47,14 +48,17 @@ def _run_analysis(conf: config.Config):
     print(f"Initial convex hull area: {hull.volume}")
     #dummyfuncs._plot_convex_hull(pq_flex_points)
     
-    # optimize every edge-normal direction, defined by the equations of the convex hull (one for each initial direction) and iterate until convergence of the hull area
-    for a,b,c in hull.equations:
-        print(f"Equation: {a}*P_flex + {b}*Q_flex + {c} = 0")
-        pq_flex_points.extend(_maximise_edge_normal(conf=conf, a=a, b=b, c=c, pq_flex_points=pq_flex_points))
-        
-    # compute final convex hull after iterating over all directions and adding new points
-    hull_final = ConvexHull(pq_flex_points)
-    print(f"Final convex hull area: {hull_final.volume}")
+    if conf.run_simple_ffor:
+        print("INFO: Running simple FFOR with only initial optimization directions.")
+    else:
+        # optimize every edge-normal direction, defined by the equations of the convex hull (one for each initial direction) and iterate until convergence of the hull area
+        for a,b,c in hull.equations:
+            print(f"Equation: {a}*P_flex + {b}*Q_flex + {c} = 0")
+            pq_flex_points.extend(_maximise_edge_normal(conf=conf, a=a, b=b, c=c, pq_flex_points=pq_flex_points))
+            
+        # compute final convex hull after iterating over all directions and adding new points
+        hull_final = ConvexHull(pq_flex_points)
+        print(f"Final convex hull area: {hull_final.volume}")
     #dummyfuncs._plot_convex_hull(pq_flex_points)
     
     # export final points to csv
