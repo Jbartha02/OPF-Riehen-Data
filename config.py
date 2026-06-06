@@ -58,9 +58,22 @@ class Config:
 
     # technology parameters
     pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
-    hp_lb_temp: int = 19  #°C
-    hp_base_temp: int = 21  #°C
-    hp_ub_temp: int = 23  #°C
+    hp_lb_temp: int = 20  #°C, minimum temperature inside the houses
+    hp_base_temp_dict: dict[int, int] = {
+        1: 21,
+        2: 21,
+        3: 21,
+        4: 21.4,
+        5: 21.8,
+        6: 21.8,
+        7: 21.8,
+        8: 21.8,
+        9: 21.8,
+        10: 21.4,
+        11: 21,
+        12: 21,
+    }  #°C per month of the year, base temperature inside the houses
+    hp_ub_temp: int = 22  #°C, maximum temperature inside the houses
     hp_output_temp: int = 30  #°C the temperature to which the HP heats the water for the heating system, used for cop calculation (assumed to be constant over the year)
     hp_q_p_ratio: float = 0.3  # TODO: define/update value (maybe also as cos_phi or similar)
     bess_soc_lb: float = 0.3  # min state of charge of bess
@@ -203,7 +216,7 @@ class Config:
         
         # HP
         self.t_hp_ub = self.hp_ub_temp * np.ones_like(self.p_load)
-        self.t_hp_base = self.hp_base_temp * np.ones_like(self.p_load)
+        self.t_hp_base = self.hp_base_temp_dict[self.analysis_month] * np.ones_like(self.p_load)
         self.t_hp_lb = self.hp_lb_temp * np.ones_like(self.p_load)
         t_outdoor_raw = self._loadprofile_df_filter_convert_to_np(pd.read_csv(f"{self.analysis_folder}/{self.filename_dict['loadprofiles']['t_outdoor']}"), analysis_day=self.analysis_date_mm_dd).squeeze() #TODO
         self.t_outdoor = np.minimum(t_outdoor_raw, self.hp_lb_temp) # make sure that t_outdoor is always smaller than hp_lb_temp to avoid negative delta_t and thus negative p_hp_base
@@ -439,7 +452,7 @@ class Config:
         
         # soc and hp: lb, base, ub
         assert 0 <= self.bess_soc_lb <= self.bess_soc_base <= self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
-        assert 17 <= self.hp_lb_temp <= self.hp_base_temp <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
+        assert 17 <= self.hp_lb_temp <= min(self.hp_base_temp_dict.values()) <= max(self.hp_base_temp_dict.values()) <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
         
         assert np.logical_and(self.p_ev_ub <= self.p_ev_base, self.p_ev_base <= self.p_ev_lb, self.p_ev_lb <= 0).all(), "p_ev must be negative"
         
