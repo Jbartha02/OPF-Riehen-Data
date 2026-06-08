@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from scipy.spatial import ConvexHull
 import matplotlib.pyplot as plt
 
@@ -34,6 +35,23 @@ def _plot_FFOR(output_folder: str, points: list[tuple[float, float]], SHOW_PLOTS
         )
     if SHOW_PLOTS:
         plt.show()
+
+def plot_seasonal_p_flex(df: pd.DataFrame):
+    """
+    Plot the seasonal variation of the min and max P_flex values.
+    Input df should have a datetime index and columns "min_p_flex" and "max_p_flex".
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(df.index, df["min_p_flex"], label="Min P_flex", marker="o")
+    ax.plot(df.index, df["max_p_flex"], label="Max P_flex", marker="o")
+    ax.set_xlabel("Date")
+    ax.set_ylabel("P_flex [kW]")
+    ax.set_title("Seasonal Variation of P_flex")
+    ax.legend()
+    ax.grid(True)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":

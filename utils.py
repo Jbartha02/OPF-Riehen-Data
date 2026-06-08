@@ -1,8 +1,11 @@
 import re
 from pathlib import Path
 
+import datetime as dt
 import numpy as np
 import pandas as pd
+
+import plots
 
 # Regular expression to parse results folder names
 _RESULTS_FOLDER_RE = re.compile(
@@ -56,9 +59,7 @@ def _parse_results_output_folder_name(
     }
 
 
-def extract_results_parameters_from_scenario(
-    scenario_folder: str | Path,
-) -> list[dict[str, object]]:
+def extract_results_parameters_from_scenario(scenario_folder: str) -> list[dict[str, object]]:
     """Return the encoded parameters for every results folder found under a scenario folder.
 
     The function walks the scenario folder recursively, finds directories whose
@@ -78,9 +79,37 @@ def extract_results_parameters_from_scenario(
 
         parsed["output_folder"] = str(output_folder)
         results.append(parsed)
+    
+    # check for duplicate results
+    start_index = len(scenario_folder) + 1  # f"{remove scenario_folder}\" prefix of output_folder
+    end_index = -13  # ignore the created_at suffix (except for year)
+    for result in results:
+        _find_duplicate_results(scenario_folder, result["output_folder"][start_index:end_index])  # check for duplicates with same prefix (without created_at)
 
     return results
 
+def _find_duplicate_results(scenario_results_folder: str, result_prefix: str):
+    """Check if there are multiple files with the same prefix in the results folder."""
+    results_path = Path(scenario_results_folder)
+    matching_dirs = [dir for dir in results_path.glob(f"{result_prefix}*") if dir.is_dir()]
+    if len(matching_dirs) > 1:
+        print(f"Warning: Found multiple files with prefix '{result_prefix}' in '{scenario_results_folder}':")
+        for file in matching_dirs:
+            print(f" - {file}")
+    elif len(matching_dirs) == 0:
+        print(f"Warning: No files found with prefix '{result_prefix}' in '{scenario_results_folder}'.")
+
+def _extract_min_max_p_flex_from_points_file(points_file: str) -> tuple[float, float] | None:
+    """Extract the minimum and maximum P_flex values from a results_pq_flex_points.csv file."""
+    try:
+        df = pd.read_csv(points_file)
+        if df.empty:
+            print(f"Warning: {points_file} is empty.")
+            return None
+        return (df["P_flex"].min(), df["P_flex"].max())
+    except (pd.errors.EmptyDataError, pd.errors.ParserError):
+        print(f"Error reading {points_file}")
+        return None
 
 def _extract_nodal_results_to_df(conf, var, varname) -> pd.DataFrame:
     """Create a node-wise result table from a 2D Gurobi variable indexed by (node, timestep).
@@ -146,7 +175,7 @@ if __name__ == "__main__":
     filtered_results = [
         result 
         for result in results 
-        if result["analysis_year"] == 2050 and result["analysis_start_hour"] == 10
+        if result["analysis_year"] == 2050 and result["analysis_start_hour"] == 12 and result["pv_weather"] == "pvsun" and result["analysis_n_timesteps"] == 1 and result["delta_t"] == 0.5
     ]
 
     for result in filtered_results:
