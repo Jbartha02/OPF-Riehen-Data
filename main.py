@@ -15,27 +15,29 @@ def main():
     SHOW_PLOTS = False  # set to False to skip showing plots (but still save them)
 
     conf_list: list[config.Config] = [
-        lambda: config.Config(
-            year=2050,
-            month=8,
-            day=19,
-            start_hour=9,
-            n_timesteps=1,
-            delta_t=0.5,
-            pv_weather="pvcld",
-        ),
-        #lambda: config.Config(
-        #    year=2050,
-        #    month=8,
-        #    day=19,
-        #    start_hour=9,
-        #    n_timesteps=1
-        #),
+        config.Config(
+            year=year,
+            month=month,
+            day=day,
+            start_hour=12,
+            n_timesteps=4,
+            delta_t=1.0,
+            pv_weather=pv_weather,
+            #no_ev=no_ev,
+            #no_bess=no_bess,
+        )
+        for year in [2050, 2030]
+        for month, day in [(1,8), (1,13), (2,5), (2,13), (3,10), (4,19), (4,22), (5,13), (5,23), (6,9), (6,11), (7,26), (7,29)]
+        for pv_weather in ["pvcld", "pvsun"]
+        #for no_ev in [False, True]
+        #for no_bess in [False, True]
+        # NOTE: you can add other iteration parameters here and replace the value in the config constructor above with the parameter
     ]
     
     # run each scenario in conf_list
     for conf in conf_list:
-        _run_analysis(conf=conf(), SHOW_PLOTS=SHOW_PLOTS)
+        conf.create_output_folder()
+        _run_analysis(conf=conf, SHOW_PLOTS=SHOW_PLOTS)
 
 
 def _run_analysis(conf: config.Config, SHOW_PLOTS: bool):

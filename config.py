@@ -58,18 +58,19 @@ class Config:
 
     # technology parameters
     pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
+    no_hp_month_list: list[int] = [5, 6, 7, 8, 9]  # summer months in which the HP is deactivated
     hp_lb_temp: int = 20  #°C, minimum temperature inside the houses
     hp_base_temp_dict: dict[int, int] = {
         1: 21,
         2: 21,
         3: 21,
-        4: 21.4,
-        5: 21.8,
-        6: 21.8,
-        7: 21.8,
-        8: 21.8,
-        9: 21.8,
-        10: 21.4,
+        4: 21.5,
+        5: 21.8,  # deactivated in no_hp_month_list
+        6: 21.8,  # deactivated in no_hp_month_list
+        7: 21.8,  # deactivated in no_hp_month_list
+        8: 21.8,  # deactivated in no_hp_month_list
+        9: 21.8,  # deactivated in no_hp_month_list
+        10: 21.5,
         11: 21,
         12: 21,
     }  #°C per month of the year, base temperature inside the houses
@@ -176,14 +177,14 @@ class Config:
         self.analysis_day = day
         self.analysis_start_hour = start_hour
         self.analysis_n_timesteps = n_timesteps
-        self.delta_t = delta_t
+        self.delta_t = float(delta_t)
         self.run_simple_ffor = run_simple_ffor
 
         # overwrite delta_t if n_timesteps is not 1
         if self.analysis_n_timesteps != 1 and self.delta_t != 1.0:
             print("WARNING: Overwriting delta_t to 1 hour.")
             self.delta_t = 1.0  # hours
-        
+
         # directories
         self.analysis_folder = f"{self.base_folder}/{self.analysis_year}"
         suffix_no_ev = "_noev" if no_ev else ""
@@ -222,6 +223,19 @@ class Config:
         self.t_outdoor = np.minimum(t_outdoor_raw, self.hp_lb_temp) # make sure that t_outdoor is always smaller than hp_lb_temp to avoid negative delta_t and thus negative p_hp_base
         self.cop_hp, self.p_hp_base = self._calculate_hp_cop_and_p(node_metadata_df=self.node_metadata_df, hp_output_temp=self.hp_output_temp, t_outdoor=self.t_outdoor, t_hp_base=self.t_hp_base)
         self.q_hp_base = self.p_hp_base * self.hp_q_p_ratio
+        no_hp: bool = month in self.no_hp_month_list # deactivate HP in summer months, e.g. due to low heating demand and thus low economic viability of the HP
+        if no_hp:
+            # overwrite the HP profiles with zeros to deactivate the HP
+            self.t_hp_ub = np.zeros_like(self.t_hp_ub)
+            self.t_hp_base = np.zeros_like(self.t_hp_base)
+            self.t_hp_lb = np.zeros_like(self.t_hp_lb)
+            self.cop_hp = np.zeros_like(self.cop_hp)
+            self.p_hp_base = np.zeros_like(self.p_hp_base)
+            self.q_hp_base = np.zeros_like(self.q_hp_base)
+            # set the HP metadata to zero
+            self.node_metadata_df["HP_Nominal_power_kW"] = 0 * self.node_metadata_df["HP_Nominal_power_kW"]
+            self.node_metadata_df["HP_Thermal_capacitance_KWh/K"] = 0 * self.node_metadata_df["HP_Thermal_capacitance_KWh/K"]
+            self.node_metadata_df["HP_Thermal_conductivity_kW/K"] = 0 * self.node_metadata_df["HP_Thermal_conductivity_kW/K"]
         
         # BESS
         self.soc_bess_ub = self.bess_soc_ub * np.ones_like(self.p_load)
@@ -250,7 +264,7 @@ class Config:
             self.p_ev_ub = np.zeros_like(self.p_ev_ub)
         
         # Some data checks
-        self._post_init_checks()
+        self._post_init_checks(no_hp=no_hp)
 
 
     def _calculate_bess_p(self, node_metadata_df: pd.DataFrame, soc_bess_base: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -433,18 +447,7 @@ class Config:
 
         return all_edges_df.reset_index(drop=True)
         
-    def _post_init_checks(self):
-        
-        # create output directory if it does not exist
-        os.makedirs(self.output_folder, exist_ok=True)
-
-        # save a snapshot of this config.py file with the results
-        shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
-        
-        # save the node and edge metadata for reference
-        self.node_metadata_df.to_csv(f"{self.output_folder}/node_metadata_df.csv", index=False)
-        self.edges_metadata_df.to_csv(f"{self.output_folder}/edges_metadata_df.csv", index=False)
-        
+    def _post_init_checks(self, no_hp: bool):
         # TODO: implement data inputchecks
         # q_base
         assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
@@ -456,12 +459,12 @@ class Config:
         
         # soc and hp: lb, base, ub
         assert 0 <= self.bess_soc_lb <= self.bess_soc_base <= self.bess_soc_ub <= 1, "Check that bess_soc_lb < bess_soc_base < bess_soc_ub and that they are between 0 and 1"
-        assert 17 <= self.hp_lb_temp <= min(self.hp_base_temp_dict.values()) <= max(self.hp_base_temp_dict.values()) <= self.hp_ub_temp <= 26, "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
+        assert no_hp or (17 <= self.hp_lb_temp <= min(self.hp_base_temp_dict.values()) <= max(self.hp_base_temp_dict.values()) <= self.hp_ub_temp <= 26), "Check that hp_base_temp <= self.hp_base_temp <= self.hp_ub_temp and that they are reasonable values for temperatures in °C (17-26°C)"
         
         assert np.logical_and(self.p_ev_ub <= self.p_ev_base, self.p_ev_base <= self.p_ev_lb, self.p_ev_lb <= 0).all(), "p_ev must be negative"
         
         # t_outdoor
-        assert self.t_outdoor.max() <= self.hp_lb_temp, "Check that the outdoor temperature profile is always smaller than the HP lower bound temperature to avoid negative delta_t and thus negative p_hp_base"
+        assert no_hp or (self.t_outdoor.max() <= self.hp_lb_temp), "Check that the outdoor temperature profile is always smaller than the HP lower bound temperature to avoid negative delta_t and thus negative p_hp_base"
         assert np.logical_or(self.p_hp_base <= 0, np.isnan(self.p_hp_base)).all(), "Check that the HP power profile is always negative (consumption) to avoid issues with the optimization and interpretation of results"
         assert self.hp_output_temp >= self.hp_ub_temp, "hp_output_temp should be greater than or equal to hp_ub_temp to avoid negative delta_t and thus negative p_hp_base"
         
@@ -475,4 +478,12 @@ class Config:
         assert 1 <= self.analysis_day <= 31, "Check that analysis_day is between 1 and 31, otherwise the time indexing and profiles need to be adapted"
         assert 1 <= self.analysis_month <= 12, "Check that analysis_month is between 1 and 12, otherwise the time indexing and profiles need to be adapted"
         assert self.analysis_year in [2030, 2040, 2050], "Check that analysis_year is one of the years for which we have data (2030, 2040, 2050), otherwise the time indexing and profiles need to be adapted"
+
+    def create_output_folder(self):
+        """Create the output folder and store a snapshot of the inputs for this scenario."""
+
+        os.makedirs(self.output_folder, exist_ok=True)
+        shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
+        self.node_metadata_df.to_csv(f"{self.output_folder}/node_metadata_df.csv", index=False)
+        self.edges_metadata_df.to_csv(f"{self.output_folder}/edges_metadata_df.csv", index=False)
     
