@@ -7,6 +7,7 @@ from scipy.spatial import ConvexHull
 import config
 import functions as funcs
 import plots
+import utils
 
 
 def main():
@@ -49,7 +50,7 @@ def _run_analysis(conf: config.Config, SHOW_PLOTS: bool):
     # compute initial convex hull after initial optimization directions
     hull = ConvexHull(pq_flex_points)
     print(f"Initial convex hull area: {hull.volume}")
-    plots._plot_FFOR(conf=conf, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
+    plots._plot_FFOR(output_folder=conf.output_folder, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
     
     if conf.run_simple_ffor:
         print("INFO: Running simple FFOR with only initial optimization directions.")
@@ -62,7 +63,7 @@ def _run_analysis(conf: config.Config, SHOW_PLOTS: bool):
         # compute final convex hull after iterating over all directions and adding new points
         hull_final = ConvexHull(pq_flex_points)
         print(f"Final convex hull area: {hull_final.volume}")
-        plots._plot_FFOR(conf=conf, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
+        plots._plot_FFOR(output_folder=conf.output_folder, points=pq_flex_points, SHOW_PLOTS=SHOW_PLOTS)
     
     # export final points to csv
     df_pq_flex = pd.DataFrame(pq_flex_points, columns=["P_flex", "Q_flex"])
@@ -251,11 +252,11 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     }
 
     # extract and save nodal results to longtable
-    df = pd.concat([funcs._extract_nodal_results_to_df(conf, var, varname) for varname, var in results_n_t_dict.items()])
+    df = pd.concat([utils._extract_nodal_results_to_df(conf, var, varname) for varname, var in results_n_t_dict.items()])
     df.to_csv(f"{conf.output_folder}/results_node_t_a{a}_b{b}.csv", index=False)
 
     # extract and save edge results to longtable
-    df = pd.concat([funcs._extract_edge_results_to_df(conf, var, varname) for varname, var in results_edge_t_dict.items()])
+    df = pd.concat([utils._extract_edge_results_to_df(conf, var, varname) for varname, var in results_edge_t_dict.items()])
     df.to_csv(f"{conf.output_folder}/results_edge_t_a{a}_b{b}.csv", index=False)
 
 

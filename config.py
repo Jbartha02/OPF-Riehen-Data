@@ -189,7 +189,7 @@ class Config:
         suffix_no_ev = "_noev" if no_ev else ""
         suffix_no_bess = "_nobess" if no_bess else ""
         suffix_simple_ffor = "_simpleffor" if run_simple_ffor else ""
-        self.output_folder = f"{self.analysis_folder}/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{pv_weather}{suffix_no_ev}{suffix_no_bess}{suffix_simple_ffor}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
+        self.output_folder = f"{self.base_folder}/results/results_{self.analysis_year}{self.analysis_month:02d}{self.analysis_day:02d}_{self.analysis_start_hour:02d}_{self.analysis_n_timesteps*self.delta_t}_{pv_weather}{suffix_no_ev}{suffix_no_bess}{suffix_simple_ffor}_{dt.datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
 
         # time parameters
         self.analysis_date_mm_dd = f"{self.analysis_month:02d}-{self.analysis_day:02d}"
