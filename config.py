@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import datetime as dt
@@ -446,7 +447,46 @@ class Config:
         all_edges_df["v_idx"] = all_edges_df["v_idx"].astype(int)
 
         return all_edges_df.reset_index(drop=True)
-        
+
+    def _plot_input_profiles(self):
+        """Plots p_load, p_pv_base, p_bess_base, p_hp_base, p_ev_base and their total sum."""
+        x_values = [
+            dt.datetime(self.analysis_year, self.analysis_month, self.analysis_day)
+            + dt.timedelta(hours=int(hour))
+            for hour in range(24 * 2)  # 48 hours to cover the copied profiles for the next day
+        ]
+
+        p_hp_base = np.nansum(self.p_hp_base, axis=0)
+        p_ev_base = np.nansum(self.p_ev_base, axis=0)
+        p_load = np.nansum(self.p_load, axis=0)
+        p_pv_base = np.nansum(self.p_pv_base, axis=0)
+        p_bess_base_neg = np.nansum(self.p_bess_base_neg, axis=0)
+        p_bess_base_pos = np.nansum(self.p_bess_base_pos, axis=0)
+
+        stacked_profiles_neg = [p_hp_base, p_ev_base, p_load, p_bess_base_neg]
+        labels_neg = ["p_hp_base", "p_ev_base", "p_load", "p_bess_base"]
+        stacked_profiles_pos = [p_pv_base, p_bess_base_pos]
+        labels_pos = ["p_pv_base", "p_bess_base"]
+        net_sum = np.sum(stacked_profiles_neg + stacked_profiles_pos, axis=0)
+
+        fig, ax = plt.subplots(figsize=(14, 7))
+        ax.stackplot(x_values, stacked_profiles_neg, labels=labels_neg, alpha=0.85)
+        ax.stackplot(x_values, stacked_profiles_pos, labels=labels_pos, alpha=0.85)
+        ax.plot(x_values, net_sum, color="black", linewidth=2.5, label="net sum")
+        ax.axhline(0, color="gray", linewidth=1, linestyle="--", alpha=0.6)
+        ax.axvline(x_values[self.analysis_start_hour], color="gray", linewidth=0.5, linestyle="--", alpha=0.6, label="analysis start")
+        ax.axvline(x_values[self.analysis_start_hour + self.analysis_n_timesteps], color="gray", linewidth=0.5, linestyle="--", alpha=0.6, label="analysis end") if self.delta_t == 1.0 else None
+        ax.set_title("Input profiles")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Power [kW]")
+        ax.legend(loc="best")
+        ax.grid(True, alpha=0.3)
+        fig.autofmt_xdate()
+        fig.tight_layout()
+        fig.savefig(f"{self.output_folder}/input_profiles.png", bbox_inches="tight", dpi=300)
+        plt.close(fig)
+
+
     def _post_init_checks(self, no_hp: bool):
         # TODO: implement data inputchecks
         # q_base
@@ -486,4 +526,5 @@ class Config:
         shutil.copy2(os.path.abspath(__file__), f"{self.output_folder}/config.py")
         self.node_metadata_df.to_csv(f"{self.output_folder}/node_metadata_df.csv", index=False)
         self.edges_metadata_df.to_csv(f"{self.output_folder}/edges_metadata_df.csv", index=False)
+        self._plot_input_profiles()
     
