@@ -52,6 +52,44 @@ def plot_seasonal_p_flex(df: pd.DataFrame):
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
+    
+def plot_pv_weather_seasonality_p_flex(df: dict[str, pd.DataFrame], year: int):
+    """
+    Plot for the report of the seasonal variation of the min and max P_flex values for differend PV weather conditions.
+    Input df should have a datetime index and columns "min_p_flex" and "max_p_flex".
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    for pv_weather, df_pv in df.items():
+        color = {
+            "pvcld": "deepskyblue",
+            "pvsun": "blue",
+        }
+        legend_label = {
+            "pvcld": "Cloudy Day 12:00",
+            "pvavg": "Average Day 12:00",
+            "pvsun": "Sunny Day 12:00",
+            "midnight": "No PV 00:00"
+        }
+        if pv_weather == "pvavg":
+            ax.stackplot(df_pv.index, df_pv["min_p_flex"], labels=[legend_label.get(pv_weather)], color='paleturquoise', alpha=0.3)
+            ax.stackplot(df_pv.index, df_pv["max_p_flex"], color='darkturquoise', alpha=0.3)
+            ax.plot(df_pv.index, df_pv["min_p_flex"], color='paleturquoise', alpha=0.6, linewidth=4, marker="o")
+            ax.plot(df_pv.index, df_pv["max_p_flex"], color='darkturquoise', alpha=0.4, linewidth=4, marker="o")
+        elif pv_weather == "midnight":
+            ax.plot(df_pv.index, df_pv["min_p_flex"], label=legend_label.get(pv_weather), linewidth=3, linestyle='--', color='gray', marker="x")
+            ax.plot(df_pv.index, df_pv["max_p_flex"], label=None, linewidth=3, linestyle='--', color='gray', marker="x")
+        else:
+            ax.plot(df_pv.index, df_pv["min_p_flex"], label=legend_label.get(pv_weather), color=color.get(pv_weather, None), linewidth=4, marker="o")
+            #ax.plot(df_pv.index, df_pv["max_p_flex"], label=legend_label.get(pv_weather), color=color.get(pv_weather, None), linewidth=2, marker="o")
+    ax.set_xlabel("Date", fontsize=16)
+    ax.set_ylabel("P_flex [kW]", fontsize=16)
+    ax.set_title(f"Seasonal variation of P_flex for different PV scenarios in {year}, T=2h", fontsize=20, pad=5)
+    ax.legend(fontsize=12)
+    ax.tick_params(axis='both', which='major', labelsize=16)
+    ax.grid(True)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.show()
 
 
 if __name__ == "__main__":
