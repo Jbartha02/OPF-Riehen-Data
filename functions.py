@@ -60,7 +60,7 @@ def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
     # Initialize variables
     p_hp = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="p_hp") # kW
     p_hp_flex = model.addVars(nodes, times, lb=-p_hp_ub_abs, ub=p_hp_ub_abs, vtype=GRB.CONTINUOUS, name="p_hp_flex") # kW
-    q_hp = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="q_hp") # kVAr 
+    q_hp = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=0, vtype=GRB.CONTINUOUS, name="q_hp") # kVAr
     q_hp_flex = model.addVars(nodes, times, lb=-q_hp_ub_abs, ub=q_hp_ub_abs, vtype=GRB.CONTINUOUS, name="q_hp_flex") # kVAr
     t_hp = model.addVars(nodes, times, lb=t_hp_lb, ub=t_hp_ub, vtype=GRB.CONTINUOUS, name="t_hp") # °C
     
@@ -95,7 +95,7 @@ def define_hp_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
             )
             model.addConstr(p_hp[node, t] <= 0, name=f"hp_max_n{node}_t{t}")
             model.addConstr(
-                q_hp[node, t] == conf.hp_q_p_ratio * p_hp[node, t], name=f"q_hp_ratio_n{node}_t{t}" 
+                q_hp[node, t] == conf.hp_q_p_ratio * p_hp[node, t], name=f"q_hp_ratio_n{node}_t{t}"
             )
             model.addConstr(
                 q_hp[node, t] == conf.q_hp_base[node, t] + q_hp_flex[node, t], name=f"q_hp_base_n{node}_t{t}"

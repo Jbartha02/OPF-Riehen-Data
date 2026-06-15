@@ -7,6 +7,7 @@ import pandas as pd
 
 import plots
 
+
 # Regular expression to parse results folder names
 _RESULTS_FOLDER_RE = re.compile(
     r"^results_"
@@ -20,9 +21,7 @@ _RESULTS_FOLDER_RE = re.compile(
     r"(?P<created_at>\d{8}_\d{2}_\d{2}_\d{2})$"
 )
 
-def _parse_results_output_folder_name(
-    output_folder_name: str,
-) -> dict[str, object] | None:
+def _parse_results_output_folder_name(output_folder_name: str,) -> dict[str, object] | None:
     """Parse a single results folder name into the parameters encoded in it."""
     match = _RESULTS_FOLDER_RE.match(output_folder_name)
     if match is None:

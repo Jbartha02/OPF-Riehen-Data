@@ -12,8 +12,8 @@ YEARS = [2030, 2040, 2050]
 # storage capacity [h]: Battery_capacity_kWh = Nominal_power_kW * DURATION_H[year]
 # (Paper): 2.5 h for all years
 DURATION_H = {
-    2030: 1.5,   # consercative, actual market reality
-    2040: 2,   # moderat
+    2030: 1.5,   # conservative, actual market reality
+    2040: 2,   # moderate
     2050: 2.5,   # ambitious but possible
 }
 

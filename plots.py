@@ -56,7 +56,7 @@ def plot_seasonal_p_flex(df: pd.DataFrame):
 def plot_pv_weather_seasonality_p_flex(df: dict[str, pd.DataFrame], year: int):
     """
     Plot for the report of the seasonal variation of the min and max P_flex values for differend PV weather conditions.
-    Input df should have a datetime index and columns "min_p_flex" and "max_p_flex".
+    Input df should have values of pd.DataFrame with a datetime index and columns "min_p_flex" and "max_p_flex".
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     for pv_weather, df_pv in df.items():
