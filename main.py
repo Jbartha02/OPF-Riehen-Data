@@ -101,7 +101,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
         S_base_MVA=conf.S_base
     )
 
-    # 2) Root index (PCC = transformer node) # TODO: move this to config
+    # 2) Root index (PCC = transformer node)
     root_osmid = 97
     matches = conf.node_metadata_df.index[conf.node_metadata_df["LV_osmid"] == root_osmid].tolist()
     if not matches:
@@ -140,7 +140,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
             )
 
             # Scale to p.u.
-            P_inj_expr[(i, tcol)] = expr_P / Sbase_kW  # TODO pu base not clear of kW or MW
+            P_inj_expr[(i, tcol)] = expr_P / Sbase_kW 
             Q_inj_expr[(i, tcol)] = expr_Q / Sbase_kW
 
     # 5) LinDistFlow grid constraints
@@ -267,7 +267,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     
 def _maximise_edge_normal(conf: config.Config, a: float, b: float, c: float, pq_flex_points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """This recursive function calculates new points in the (P_flex,Q_flex) space by optimizing in the edge normal-direction defined by a,b. For every point that increases the convex hull area by more than eta, it iterates again in the two directions adjacent to the new point, until convergence."""
-    print(f"New minimization objective: -{a}*P_flex - {b}*Q_flex") # TODO: check signs (maybe revert to -a and -b)
+    print(f"New minimization objective: -{a}*P_flex - {b}*Q_flex")
     # minimize in direction -a,-b and get new optimal p,q point
     p_flex,q_flex = _setup_and_minimize_model(conf=conf, a=a, b=b)
     new_points_list = [(p_flex, q_flex)]
