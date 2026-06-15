@@ -21,9 +21,7 @@ import csv
 import numpy as np
 import pandas as pd
 
-# =============================================================================
-# KONFIGURATION
-# =============================================================================
+# config
 
 BASE_DIR     = r"C:\Users\josua\OPF-Riehen-Data\2703_23_homogen"
 ALT_SUBDIR   = "ev_alternativ"
@@ -42,9 +40,7 @@ MIN_BUDGET_KWH   = 0.5
 MAX_SESSION_H    = 9
 TARGET_SESSION_H = 2
 
-# =============================================================================
-# HILFSFUNKTIONEN
-# =============================================================================
+# Helper functions
 
 def read_ev_allocation(path: str) -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -196,11 +192,6 @@ def print_summary(year, active_nodes, node_base, p_max, ts_headers):
     print(f"    Max. Knotenleistung:             {max_load:.2f} kW  (Limit: {p_max} kW)")
     print(f"    Ø max. Ladestunden/Tag/Knoten:   {avg_max_daily:.1f} h")
     print(f"    Gesamtenergie (Netz, alle Tage): {total_energy:.1f} kWh")
-
-
-# =============================================================================
-# HAUPTPROGRAMM
-# =============================================================================
 
 def main():
     for year in YEARS:

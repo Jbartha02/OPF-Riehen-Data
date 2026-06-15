@@ -7,17 +7,12 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 
-# TODO: profiles to p.u.? -> check units!
-# TODO: check sign convention of power (positive = injection into grid, negative = withdrawal from grid)
-
-# TODO: config input checks
-
 class Config:
     
     # directories
-    base_folder: str = "2703_23_homogen"  # base folder where data is stored
+    base_folder: str = "2703_23_homogen" 
 
-    # filenames
+    # contains the filenames of the input files for each type of data
     filename_dict: dict[str, dict[str, str]] = {
         "edges": {
             "2703-23_0_4": "edges.geojson"
@@ -51,14 +46,14 @@ class Config:
             "Ev_ub": "ev_7kw/ev_baseload.csv",
             "t_outdoor": "temperature_profiles.csv"
         }
-    } # contains the filenames of the input files for each type of data
+    } 
 
     # optimization parameters
     eta_polygon_area: float = 0.01  # convergence parameter for the polygon approximation of the FFOR
     optimization_dirs_init: list[tuple[int, int]] = [(1, 0), (0, 1), (-1, 0), (0, -1)]  # initial optimization directions for the FFOR algorithm, define coefficients (a,b) of minimization objective a*P + b*Q
 
     # technology parameters
-    pv_max_q_p_ratio: float = 0.3  #TODO: define/update this value
+    pv_max_q_p_ratio: float = 0.3
     no_hp_month_list: list[int] = [5, 6, 7, 8, 9]  # summer months in which the HP is deactivated
     hp_lb_temp: int = 20  #°C, minimum temperature inside the houses
     hp_base_temp_dict: dict[int, int] = {
@@ -77,7 +72,7 @@ class Config:
     }  #°C per month of the year, base temperature inside the houses
     hp_ub_temp: int = 22  #°C, maximum temperature inside the houses
     hp_output_temp: int = 30  #°C the temperature to which the HP heats the water for the heating system, used for cop calculation (assumed to be constant over the year)
-    hp_q_p_ratio: float = 0.3  # TODO: define/update value (maybe also as cos_phi or similar)
+    hp_q_p_ratio: float = 0.3  
     bess_soc_lb: float = 0.3  # min state of charge of bess
     bess_soc_base: float = 0.5  # base state of charge of bess
     bess_soc_ub: float = 0.7  # max state of charge of bess
@@ -393,9 +388,9 @@ class Config:
 
 
     def _ingest_network_edges(self, analysis_folder: str, fn_edges_metadata: dict[str, str], fn_edges: dict[str, str], ordered_node_metadata: pd.DataFrame) -> pd.DataFrame:
-        """
-        Extrahiert alle Edges aus dem GeoJSON, verknüpft sie mit den CSV-Metadaten
-        und übersetzt u und v basierend auf der bestehenden node_metadata_df in Matrix-Indizes.
+        """ 
+        extracts all edges from the geojson, merges them with the csv metadata of the edges, and maps u and v to matrix indices 
+        based on the existing node_metadata_df. Returns a pd.DataFrame with all edge parameters and the mapped u and v indices.
         """
         records: list[dict[str, object]] = []
 
@@ -488,7 +483,6 @@ class Config:
 
 
     def _post_init_checks(self, no_hp: bool):
-        # TODO: implement data inputchecks
         # q_base
         assert (self.q_pv_base == np.zeros_like(self.p_load)).all(), "q_pv_base is assumed to be zero, check input"
         assert (self.q_bess_base == np.zeros_like(self.p_load)).all(), "q_bess_base is assumed to be zero, check input"

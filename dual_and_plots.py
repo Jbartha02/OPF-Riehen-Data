@@ -26,9 +26,7 @@ import functions as funcs
 import utils
 
 
-# ---------------------------------------------------------------------------
 # Constraint classification
-# ---------------------------------------------------------------------------
 
 _CONSTR_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"^V_root"),                  "V_root"),
@@ -145,9 +143,7 @@ def _classify(name: str) -> str:
     return "other"
 
 
-# ---------------------------------------------------------------------------
 # 1. Dual analysis: fix-and-re-solve LP from saved MIP results
-# ---------------------------------------------------------------------------
 
 # Parses "results_node_t_a-0.726_b-0.687.csv" → (-0.726, -0.687)
 _DIR_FILE_RE = re.compile(
@@ -382,9 +378,7 @@ def analyse_from_results(
     return full_df, summary
 
 
-# ---------------------------------------------------------------------------
 # 2. FFOR time-horizon plot
-# ---------------------------------------------------------------------------
 
 def plot_ffor_time_horizons(save_dir: str = "2703_23_homogen/explorations/time_horizon"):
     """Overlay FFOR hulls for T = 0.5 h … 8 h for summer and winter.
@@ -499,9 +493,7 @@ def plot_ffor_time_horizons(save_dir: str = "2703_23_homogen/explorations/time_h
             print(f"Saved {out_path}")
 
 
-# ---------------------------------------------------------------------------
 # Helper: hull geometry
-# ---------------------------------------------------------------------------
 
 def _hull_ordered_verts(hull_pts: np.ndarray, vertices: np.ndarray) -> np.ndarray:
     """Return hull vertex indices sorted counterclockwise by angle from centroid."""
@@ -574,9 +566,7 @@ def _dominant_per_direction(
     return pd.DataFrame(records)
 
 
-# ---------------------------------------------------------------------------
 # 3a. Binding constraint summary bar chart
-# ---------------------------------------------------------------------------
 
 def plot_binding_summary(summary: pd.DataFrame, conf: config.Config, save_dir: str | None = None):
     """Two-panel bar chart: investment signals vs. operational signals."""
@@ -633,9 +623,7 @@ def plot_binding_summary(summary: pd.DataFrame, conf: config.Config, save_dir: s
     plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
 # 3b. EV comparison: binding constraint bar chart + clean hull overlay
-# ---------------------------------------------------------------------------
 
 def plot_ev_comparison(scenario_results: list[dict], save_dir: str):
     """Grouped bar chart comparing binding constraints with vs. without EV.
@@ -843,9 +831,7 @@ def plot_ev_hull_clean(
     plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     DUALS_DIR   = "2703_23_homogen/explorations/duals"
@@ -867,9 +853,7 @@ if __name__ == "__main__":
         },
     ]
 
-    # ------------------------------------------------------------------
-    # Dual analysis — load from cache or run (requires Gurobi)
-    # ------------------------------------------------------------------
+    # Dual analysis — load from cache or run
     collected = []
     for sc in SCENARIOS:
         conf = config.Config(
@@ -906,9 +890,7 @@ if __name__ == "__main__":
             "ev_label":       ev_label,
         })
 
-    # ------------------------------------------------------------------
     # EV comparison: bar chart (with/without EV) + clean hull overlay
-    # ------------------------------------------------------------------
     from collections import defaultdict
     date_groups: dict = defaultdict(list)
     for item in collected:
@@ -941,7 +923,5 @@ if __name__ == "__main__":
                 save_dir=COMPARE_DIR,
             )
 
-    # ------------------------------------------------------------------
     # FFOR time-horizon plot
-    # ------------------------------------------------------------------
     plot_ffor_time_horizons()

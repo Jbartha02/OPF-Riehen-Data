@@ -57,7 +57,7 @@ def calculate_hp_profiles(scenario_name_0, scenario_name_1, year, t_room_set=20.
             
         results.append(hp_series)
 
-    # Output im gleichen Szenario-Ordner speichern
+    # save output in same scenario folder
     output_df = pd.DataFrame(results)
     output_name = f"hp_power_profiles_{scenario_name_0}_{scenario_name_1}_{year}.csv"
     output_path = os.path.join(base_path, output_name)

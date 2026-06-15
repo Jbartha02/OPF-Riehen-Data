@@ -1,15 +1,7 @@
-"""
-bess_profil.py
-Erstellt alternative BESS-Allokationsdateien mit konfigurierbaren Speicherdauer-Multiplikatoren.
-Ausgabe: bess_alternativ/bess_allocation.csv innerhalb jedes Jahresordners.
-
-Originaldatensatz: Battery_capacity_kWh = Nominal_power_kW * 2.5
-"""
-
 import os
 import pandas as pd
 
-# ── Konfigurierbare Parameter ─────────────────────────────────────────────────
+# configurable parameters
 
 BASE_FOLDERS = [
     "2703_23_homogen",
@@ -17,15 +9,13 @@ BASE_FOLDERS = [
 
 YEARS = [2030, 2040, 2050]
 
-# Speicherdauer [h]: Battery_capacity_kWh = Nominal_power_kW * DURATION_H[year]
-# Original (Paper): 2.5 h für alle Jahre
+# storage capacity [h]: Battery_capacity_kWh = Nominal_power_kW * DURATION_H[year]
+# (Paper): 2.5 h for all years
 DURATION_H = {
-    2030: 1.5,   # konservativ, aktuelle Marktrealität
+    2030: 1.5,   # consercative, actual market reality
     2040: 2,   # moderat
-    2050: 2.5,   # ambitioniert aber möglich
+    2050: 2.5,   # ambitious but possible
 }
-
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def create_bess_alternativ(base_folders: list[str], years: list[int], duration_h: dict[int, float]) -> None:

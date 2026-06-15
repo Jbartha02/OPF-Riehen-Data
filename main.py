@@ -88,7 +88,7 @@ def _setup_and_minimize_model(conf: config.Config, a: float, b: float) -> tuple[
     #model.Params.Heuristics = 0.15  # default is 0.05; Relative time spent in feasibility heuristics
     #model.Params.Presolve = 2  # aggressive presolve
     
-    ### ---- Define node power variables and constraints for each time step ---- ###
+    # Define node power variables and constraints for each time step
     p_pv, p_pv_flex, q_pv, q_pv_flex = funcs.define_pv_vars_and_bcs(model, conf)
     p_hp, p_hp_flex, q_hp, q_hp_flex, t_hp = funcs.define_hp_vars_and_bcs(model, conf)
     p_bess_pos, p_bess_neg, p_bess_flex, q_bess, q_bess_flex, soc_bess, b_bess_charge = funcs.define_bess_vars_and_bcs(model, conf)

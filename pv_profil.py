@@ -1,24 +1,24 @@
 """
 pv_profil.py
-Erstellt sonnige und bewölkte PV-Erzeugungsprofile aus Mittelwert ± k*Standardabweichung.
+create sunny and cloudy pv generation profiles from mean ± k*stddev.
 
-  Sonnenprofil:   pv_sun    = min(μ + K_SUN  * σ,  P_installed)
-  Wolkenprofil:   pv_clouds = max(μ - K_RAIN * σ,  0)
+  sunny:   pv_sun    = min(μ + K_SUN  * σ,  P_installed)
+  cloudy:   pv_clouds = max(μ - K_RAIN * σ,  0)
 
-Ausgabe (gleiches Format wie pv_generation.csv):
-  <Jahresordner>/pv_sun.csv    — sonniges Szenario
-  <Jahresordner>/pv_clouds.csv — bewölktes Szenario
+output (same format as pv_generation.csv):
+  <Jahresordner>/pv_sun.csv    — sunny
+  <Jahresordner>/pv_clouds.csv — cloudy
 
-Verwendung in config.py:
-  "PV_ub":   "pv_sun.csv"    (statt "pv_generation.csv")
-  "PV_base": "pv_clouds.csv" (statt "pv_generation.csv")
+usage in config.py:
+  "PV_ub":   "pv_sun.csv"    (instead of "pv_generation.csv")
+  "PV_base": "pv_clouds.csv" (instead of "pv_generation.csv")
 """
 
 import os
 import numpy as np
 import pandas as pd
 
-# ── Konfigurierbare Parameter ─────────────────────────────────────────────────
+# Parameter 
 
 BASE_FOLDERS = [
     "2703_23_homogen",
@@ -28,15 +28,15 @@ YEARS = [2030, 2040, 2050]
 
 # Multiplikator für die Standardabweichung
 #
-#  k        Sonnenprofil                    Wolkenprofil
+#  k        sunny                           cloudy
 #  -----    ----------------------------    ----------------------------
 #  k = 0.5  leicht sonnig  (Top 31 %)      leicht trüb    (Bot. 31 %)
 #  k = 1.0  sonnig         (Top 16 %)      bewölkt        (Bot. 16 %)
 #  k = 1.5  gut sonnig     (Top  7 %)      trüb           (Bot.  7 %)
 #  k = 2.0  sehr sonnig    (Top  2 %)      Schlechtwetter (Bot.  2 %)
 #
-K_SUN   = 1.0   # Sonnenprofil:   μ + K_SUN  * σ
-K_RAIN  = 1.0   # Wolkenprofil:   μ - K_RAIN * σ  (floor: 0)
+K_SUN   = 1.0   # sunny:   μ + K_SUN  * σ
+K_RAIN  = 1.0   # cloudy:   μ - K_RAIN * σ  (floor: 0)
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ def create_pv_profiles(
             mu    = df_gen[time_cols].to_numpy()
             sigma = df_std[time_cols].to_numpy()
 
-            # P_installed als Obergrenze: shape (n_nodes, 1) für broadcast
+            # P_installed as upper bound: shape (n_nodes, 1) for broadcast
             p_max = (
                 df_gen[id_cols]
                 .merge(df_ins, on=id_cols, how="left")["P_installed_kW"]

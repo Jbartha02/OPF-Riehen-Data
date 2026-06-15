@@ -177,7 +177,7 @@ def define_ev_vars_and_bcs(model: gp.Model, conf: config.Config) -> tuple[gp.tup
     times = conf.time_index_list
     
     # bound helper variables (ATTENTION with the signs)
-    p_ev_lb = np.nanmin(conf.p_ev_ub)  # NOTE: conf.p_ev_ub is smaller (more negative) than conf.p_ev_lb!
+    p_ev_lb = np.nanmin(conf.p_ev_ub)  # NOTE: conf.p_ev_ub is smaller (more negative) than conf.p_ev_lb
     p_ev_ub = np.nanmax(conf.p_ev_lb)
     p_ev_flex_lb = np.nanmin(conf.p_ev_ub - conf.p_ev_base) # this is smaller than 0
     p_ev_flex_ub = np.nanmax(conf.p_ev_lb - conf.p_ev_base) # this is larger than 0
@@ -205,13 +205,6 @@ def per_unit_edges(edges_df: pd.DataFrame, V_base_kV: float, S_base_MVA: float) 
     """
     Convert line parameters to per-unit based on V_base (kV, line-to-line) and S_base (MVA):
       r_ohm, x_ohm, b_Siemens, s_nom_MVA -> r_pu, x_pu, b_pu, s_nom_pu
-    Expected columns in edges_df:
-      - 'u_idx', 'v_idx' (int indices of nodes)
-      - 'r' (Ohm), 'x' (Ohm), 'b' (Siemens), 's_nom' (MVA)
-      - optional: other metadata retained
-    Returns a copy with added columns:
-      - 'r_pu', 'x_pu', 'b_pu', 's_nom_pu'
-      - 'Z_base_ohm', 'I_base_kA' (same for all rows, kept for convenience)
     """
     required = {'r','x','b','s_nom'}
     missing = required - set(edges_df.columns)
@@ -356,8 +349,6 @@ def assemble_lindistflow_data(tree: Dict[str, Any], T: int, V_min: float = 0.95,
 def add_lindistflow_to_model(model: gp.Model, time_index_list, data: Dict[str, Any], P_inj: Dict[Tuple[int,int], float], Q_inj: Dict[Tuple[int,int], float], fix_root_voltage: Optional[float] = 1.0, use_soc_lines: bool = True) -> Tuple[gp.tupledict, gp.tupledict, gp.tupledict]:
     """
     Add LinDistFlow variables and constraints to an existing gurobipy model.
-
-    Returns (V, P, Q) variable dicts.
     """
     root = data["root"]
     times = time_index_list
